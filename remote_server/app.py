@@ -61,57 +61,22 @@ curl -X POST "http://localhost:8080/api/upload_task" \\
   -H "Content-Type: application/json" \\
   -d '{
     "task_name": "31_ELU",
-    "model_py": "import torch...",
+    "model_py": "import torch\\ntorch.nn.functional.elu(x)",
     "kernel_files": {
-      "elu_kernel.cpp": "#include ...",
-      "pybind11.cpp": "PYBIND11_MODULE..."
-    }
-    # npu_id 可选，不指定则服务器自动分配
+      "elu_kernel.cpp": "#include <ascendc.h>...",
+      "pybind11.cpp": "PYBIND11_MODULE(elu_ext, m)..."
+    },
+    "soc_version": "Ascend910B2",
+    "npu_id": 0,
+    "clean_build": true
   }'
 ```
 
-### 2. 编译 Kernel
-
-```bash
-curl -X POST "http://localhost:8080/api/build" \\
-  -H "Content-Type: application/json" \\
-  -d '{"task_id": "your-task-id"}'
-```
-
-### 3. 验证精度
-
-```bash
-curl -X POST "http://localhost:8080/api/verify" \\
-  -H "Content-Type: application/json" \\
-  -d '{"task_id": "your-task-id"}'
-```
-
-### 4. 性能测试
-
-```bash
-curl -X POST "http://localhost:8080/api/benchmark" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "task_id": "your-task-id",
-    "warmup": 5,
-    "repeat": 10
-  }'
-```
-
-## 错误处理
-
-所有 API 返回统一的错误格式：
-
-```json
-{
-  "detail": "Error message"
-}
-```
-
-## 认证
-
-当前版本无需认证。生产环境建议添加 API Key。
-    """,
+**注意:**
+- `soc_version` 可选，不指定则服务器自动检测
+- `kernel_files` 必须包含 `pybind11.cpp`
+- 单个文件最大 50MB，总大小最大 200MB
+          """,
     contact={
         "name": "AscendOpGenAgent Team",
         "url": "https://github.com/your-repo/AscendOpGenAgent",
@@ -119,8 +84,7 @@ curl -X POST "http://localhost:8080/api/benchmark" \\
     license_info={
         "name": "Apache 2.0",
         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
-    },
-    lifespan=lifespan  # 使用新的 lifespan 方式
+    }
 )
 
 # ==================== 配置 ====================
@@ -484,10 +448,16 @@ curl -X POST "http://localhost:8080/api/upload_task" \\
 async def upload_task(data: TaskUpload):
     """接收上传的算子代码"""
     try:
+        print(f"[UPLOAD] Received task: {data.task_name}")
+        print(f"[UPLOAD] Model size: {len(data.model_py)} bytes")
+        print(f"[UPLOAD] Kernel files: {list(data.kernel_files.keys())}")
+        
         # 检查文件大小
         total_size = len(data.model_py.encode()) + sum(
             len(content.encode()) for content in data.kernel_files.values()
         )
+        
+        print(f"[UPLOAD] Total size: {total_size} bytes")
         
         if total_size > MAX_TOTAL_SIZE:
             raise HTTPException(
@@ -504,14 +474,16 @@ async def upload_task(data: TaskUpload):
         
         # 自动检测 SoC 版本（如果未指定）
         soc_version = data.soc_version if data.soc_version else detect_soc_version()
+        print(f"[UPLOAD] SoC version: {soc_version}")
         
         # 使用 NPU 调度器分配设备（支持并发）
-        allocated_npu = npu_scheduler.allocate_npu(data.npu_id if data.npu_id >= 0 else None)
+        allocated_npu = npu_scheduler.allocate_npu(data.npu_id)
+        print(f"[UPLOAD] Allocated NPU: {allocated_npu}")
         
         # 创建任务目录
         task_id = str(uuid.uuid4())
         task_dir = TASKS_DIR / task_id
-        task_dir.mkdir(parents=True)
+        task_dir.mkdir(parents=True, exist_ok=True)
         
         # 保存创建时间
         (task_dir / ".created_at").write_text(str(datetime.now().timestamp()), encoding='utf-8')
@@ -563,7 +535,11 @@ async def upload_task(data: TaskUpload):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[UPLOAD ERROR] {str(e)}")
+        print(f"[UPLOAD ERROR] Traceback:\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/api/build",
           summary="编译 AscendC Kernel",
