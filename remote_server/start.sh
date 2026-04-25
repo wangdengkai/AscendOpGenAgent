@@ -35,15 +35,15 @@ echo "Tasks directory: $TASKS_DIR"
 
 # Set environment variables
 export TASKS_DIR="$TASKS_DIR"
-export SERVER_PORT="${SERVER_PORT:-9002}"
-export SERVER_HOST="${SERVER_HOST:-0.0.0.0}"
+export PORT="${PORT:-9002}"  # 使用 PORT 而不是 SERVER_PORT
+export HOST="${HOST:-0.0.0.0}"
 
 # Start server
 echo ""
-echo "Starting server on ${SERVER_HOST}:${SERVER_PORT}..."
-echo "Server URL: http://${SERVER_HOST}:${SERVER_PORT}"
+echo "Starting server on ${HOST}:${PORT}..."
+echo "Server URL: http://${HOST}:${PORT}"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo "========================================="
 
-python3 app.py
+python3 app.py --host "$HOST" --port "$PORT"
