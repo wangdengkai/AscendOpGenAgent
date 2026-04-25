@@ -35,7 +35,7 @@ echo "Tasks directory: $TASKS_DIR"
 
 # Set environment variables
 export TASKS_DIR="$TASKS_DIR"
-export SERVER_PORT="${SERVER_PORT:-8080}"
+export SERVER_PORT="${SERVER_PORT:-9002}"
 export SERVER_HOST="${SERVER_HOST:-0.0.0.0}"
 
 # Start server

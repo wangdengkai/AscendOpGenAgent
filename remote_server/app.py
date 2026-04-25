@@ -24,7 +24,93 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-app = FastAPI(title="AscendC Remote Evaluator", version="1.0.0")
+app = FastAPI(
+    title="AscendC Remote Evaluator",
+    version="1.0.0",
+    description="""
+# AscendC 算子远程评估 API
+
+提供 AscendC 算子的编译、验证和性能测试服务。
+
+## 主要功能
+
+- **任务上传**: 上传算子代码到远程服务器
+- **Kernel 编译**: 编译 AscendC kernel
+- **精度验证**: 验证算子输出正确性
+- **性能测试**: 基准性能测试
+- **自定义命令**: 执行自定义脚本和命令
+- **状态查询**: 实时查询任务状态
+- **结果下载**: 打包下载所有结果
+
+## 快速开始
+
+### 1. 上传任务
+
+```bash
+curl -X POST "http://localhost:8080/api/upload_task" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_name": "31_ELU",
+    "model_py": "import torch...",
+    "kernel_files": {
+      "elu_kernel.cpp": "#include ...",
+      "pybind11.cpp": "PYBIND11_MODULE..."
+    },
+    "npu_id": 0
+  }'
+```
+
+### 2. 编译 Kernel
+
+```bash
+curl -X POST "http://localhost:8080/api/build" \\
+  -H "Content-Type: application/json" \\
+  -d '{"task_id": "your-task-id"}'
+```
+
+### 3. 验证精度
+
+```bash
+curl -X POST "http://localhost:8080/api/verify" \\
+  -H "Content-Type: application/json" \\
+  -d '{"task_id": "your-task-id"}'
+```
+
+### 4. 性能测试
+
+```bash
+curl -X POST "http://localhost:8080/api/benchmark" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_id": "your-task-id",
+    "warmup": 5,
+    "repeat": 10
+  }'
+```
+
+## 错误处理
+
+所有 API 返回统一的错误格式：
+
+```json
+{
+  "detail": "Error message"
+}
+```
+
+## 认证
+
+当前版本无需认证。生产环境建议添加 API Key。
+    """,
+    contact={
+        "name": "AscendOpGenAgent Team",
+        "url": "https://github.com/your-repo/AscendOpGenAgent",
+    },
+    license_info={
+        "name": "Apache 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
+    },
+)
 
 # ==================== 配置 ====================
 
@@ -32,6 +118,103 @@ TASKS_DIR = Path(os.environ.get("TASKS_DIR", "/tmp/ascend_tasks"))
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 MAX_TOTAL_SIZE = 200 * 1024 * 1024  # 200MB
 TASK_TTL = 3600  # 任务保留时间（秒）
+
+# NPU 调度器
+import threading
+
+class NPUScheduler:
+    """
+    NPU 设备调度器
+    
+    功能：
+    1. 自动分配空闲 NPU 设备
+    2. 跟踪设备使用状态
+    3. 支持负载均衡
+    """
+    
+    def __init__(self, num_npus: int = None):
+        """
+        初始化调度器
+        
+        Args:
+            num_npus: NPU 数量，None 则自动检测
+        """
+        if num_npus is None:
+            # 尝试自动检测 NPU 数量
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["npu-smi", "info", "-l"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    # 解析输出获取 NPU 数量
+                    for line in result.stdout.split('\n'):
+                        if 'Total Count' in line:
+                            num_npus = int(line.split(':')[-1].strip())
+                            break
+            except Exception:
+                pass
+            
+            # 默认值
+            if num_npus is None:
+                num_npus = int(os.environ.get("NUM_NPUS", "8"))
+        
+        self.num_npus = num_npus
+        self.lock = threading.Lock()
+        # 记录每个 NPU 上的活跃任务数
+        self.npu_load = {i: 0 for i in range(num_npus)}
+        print(f"NPU Scheduler initialized with {num_npus} devices")
+    
+    def allocate_npu(self, preferred_npu: int = None) -> int:
+        """
+        分配 NPU 设备
+        
+        Args:
+            preferred_npu: 首选 NPU ID（可选）
+            
+        Returns:
+            分配的 NPU ID
+        """
+        with self.lock:
+            # 如果指定了首选 NPU 且负载较低，优先使用
+            if preferred_npu is not None and 0 <= preferred_npu < self.num_npus:
+                if self.npu_load[preferred_npu] < 2:  # 负载阈值
+                    self.npu_load[preferred_npu] += 1
+                    print(f"Allocated preferred NPU {preferred_npu} (load: {self.npu_load[preferred_npu]})")
+                    return preferred_npu
+            
+            # 选择负载最低的 NPU
+            min_load_npu = min(self.npu_load, key=self.npu_load.get)
+            self.npu_load[min_load_npu] += 1
+            print(f"Allocated NPU {min_load_npu} (load: {self.npu_load[min_load_npu]})")
+            return min_load_npu
+    
+    def release_npu(self, npu_id: int):
+        """
+        释放 NPU 设备
+        
+        Args:
+            npu_id: 要释放的 NPU ID
+        """
+        with self.lock:
+            if 0 <= npu_id < self.num_npus:
+                self.npu_load[npu_id] = max(0, self.npu_load[npu_id] - 1)
+                print(f"Released NPU {npu_id} (load: {self.npu_load[npu_id]})")
+    
+    def get_status(self) -> dict:
+        """获取调度器状态"""
+        with self.lock:
+            return {
+                "num_npus": self.num_npus,
+                "npu_load": dict(self.npu_load),
+                "total_tasks": sum(self.npu_load.values())
+            }
+
+# 创建全局 NPU 调度器实例
+npu_scheduler = NPUScheduler()
 
 # 确保任务目录存在
 TASKS_DIR.mkdir(parents=True, exist_ok=True)
@@ -42,6 +225,7 @@ class TaskUpload(BaseModel):
     """任务上传请求"""
     task_name: str
     model_py: str
+    model_new_ascendc: Optional[str] = None  # Add this field
     kernel_files: Dict[str, str]
     soc_version: str = "Ascend910B2"
     npu_id: int = 0
@@ -93,6 +277,51 @@ def detect_cann_path() -> Optional[Path]:
             return path.resolve()
     
     return None
+
+def detect_soc_version() -> str:
+    """
+    自动检测 SoC 版本
+    
+    通过以下方式检测：
+    1. 环境变量 ASCEND_SOC_VERSION
+    2. npu-smi info 命令
+    3. 默认值 Ascend910B2
+    """
+    # 1. 检查环境变量
+    env_soc = os.environ.get("ASCEND_SOC_VERSION")
+    if env_soc:
+        print(f"Detected SoC from environment: {env_soc}")
+        return env_soc
+    
+    # 2. 尝试通过 npu-smi 检测
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["npu-smi", "info", "-t", "device-info"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            output = result.stdout
+            # 解析 npu-smi 输出，查找 SoC 信息
+            if "Ascend910B3" in output:
+                print("Detected SoC: Ascend910B3 (from npu-smi)")
+                return "Ascend910B3"
+            elif "Ascend910B2" in output:
+                print("Detected SoC: Ascend910B2 (from npu-smi)")
+                return "Ascend910B2"
+            elif "Ascend910B1" in output:
+                print("Detected SoC: Ascend910B1 (from npu-smi)")
+                return "Ascend910B1"
+    except Exception as e:
+        print(f"Failed to detect SoC via npu-smi: {e}")
+    
+    # 3. 使用默认值
+    default_soc = "Ascend910B2"
+    print(f"Using default SoC version: {default_soc}")
+    return default_soc
 
 def find_model_class_in_module(module_path: Path, hints: List[str] = None) -> Optional[str]:
     """检查模块中是否有模型类"""
@@ -192,7 +421,7 @@ def cleanup_old_tasks():
             created_at_file = task_dir / ".created_at"
             if created_at_file.exists():
                 try:
-                    created_at = float(created_at_file.read_text())
+                    created_at = float(created_at_file.read_text(encoding='utf-8'))
                     if current_time - created_at > TASK_TTL:
                         shutil.rmtree(task_dir)
                         print(f"Cleaned up expired task: {task_dir.name}")
@@ -201,7 +430,46 @@ def cleanup_old_tasks():
 
 # ==================== API 端点 ====================
 
-@app.post("/api/upload_task")
+@app.post("/api/upload_task", 
+          summary="上传算子任务",
+          description="""
+上传算子代码到远程服务器，创建新的评估任务。
+
+**请求示例:**
+
+```bash
+curl -X POST "http://localhost:8080/api/upload_task" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_name": "31_ELU",
+    "model_py": "import torch\\ntorch.nn.functional.elu(x)",
+    "kernel_files": {
+      "elu_kernel.cpp": "#include <ascendc.h>...",
+      "pybind11.cpp": "PYBIND11_MODULE(elu_ext, m)..."
+    },
+    "soc_version": "Ascend910B2",
+    "npu_id": 0,
+    "clean_build": true
+  }'
+```
+
+**响应示例:**
+
+```json
+{
+  "task_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "uploaded",
+  "message": "Task uploaded successfully",
+  "soc_version": "Ascend910B2",
+  "auto_detected": false
+}
+```
+
+**注意:**
+- `soc_version` 可选，不指定则服务器自动检测
+- `kernel_files` 必须包含 `pybind11.cpp`
+- 单个文件最大 50MB，总大小最大 200MB
+          """)
 async def upload_task(data: TaskUpload):
     """接收上传的算子代码"""
     try:
@@ -223,23 +491,33 @@ async def upload_task(data: TaskUpload):
                     detail=f"File {filename} exceeds size limit {MAX_FILE_SIZE}"
                 )
         
+        # 自动检测 SoC 版本（如果未指定）
+        soc_version = data.soc_version if data.soc_version else detect_soc_version()
+        
+        # 使用 NPU 调度器分配设备（支持并发）
+        allocated_npu = npu_scheduler.allocate_npu(data.npu_id if data.npu_id >= 0 else None)
+        
         # 创建任务目录
         task_id = str(uuid.uuid4())
         task_dir = TASKS_DIR / task_id
         task_dir.mkdir(parents=True)
         
         # 保存创建时间
-        (task_dir / ".created_at").write_text(str(datetime.now().timestamp()))
+        (task_dir / ".created_at").write_text(str(datetime.now().timestamp()), encoding='utf-8')
         
-        # 写入 model.py
-        (task_dir / "model.py").write_text(data.model_py)
+        # 写入 model.py（强制使用 UTF-8 编码）
+        (task_dir / "model.py").write_text(data.model_py, encoding='utf-8')
         
-        # 写入 kernel 文件
+        # 写入 model_new_ascendc.py (if provided)
+        if data.model_new_ascendc:
+            (task_dir / "model_new_ascendc.py").write_text(data.model_new_ascendc, encoding='utf-8')
+        
+        # 写入 kernel 文件（强制使用 UTF-8 编码）
         if data.kernel_files:
             kernel_dir = task_dir / "kernel"
             kernel_dir.mkdir(exist_ok=True)
             for filename, content in data.kernel_files.items():
-                (kernel_dir / filename).write_text(content)
+                (kernel_dir / filename).write_text(content, encoding='utf-8')
         
         # 复制工具脚本
         utils_dir = task_dir / "utils"
@@ -250,20 +528,25 @@ async def upload_task(data: TaskUpload):
             if src.exists():
                 shutil.copy2(src, utils_dir / script)
         
-        # 保存配置
+        # 保存配置（使用 UTF-8 编码）
         config = {
             "task_name": data.task_name,
-            "soc_version": data.soc_version,
-            "npu_id": data.npu_id,
+            "soc_version": soc_version,
+            "npu_id": allocated_npu,  # 使用调度器分配的 NPU
+            "preferred_npu": data.npu_id,  # 记录用户首选
             "clean_build": data.clean_build,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now().isoformat(),
+            "detected_soc": soc_version != data.soc_version  # 标记是否自动检测
         }
-        (task_dir / "config.json").write_text(json.dumps(config, indent=2))
+        (task_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding='utf-8')
         
         return {
             "task_id": task_id,
             "status": "uploaded",
-            "message": "Task uploaded successfully"
+            "message": "Task uploaded successfully",
+            "soc_version": soc_version,
+            "allocated_npu": allocated_npu,
+            "auto_detected": soc_version != data.soc_version
         }
         
     except HTTPException:
@@ -271,7 +554,47 @@ async def upload_task(data: TaskUpload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/build")
+@app.post("/api/build",
+          summary="编译 AscendC Kernel",
+          description="""
+编译上传的 AscendC kernel 代码。
+
+**请求示例:**
+
+```bash
+curl -X POST "http://localhost:8080/api/build" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "soc_version": "Ascend910B2",
+    "clean": true
+  }'
+```
+
+**响应示例 (成功):**
+
+```json
+{
+  "success": true,
+  "logs": "[build_ascendc] Running: cmake...\nBuild completed",
+  "error": null
+}
+```
+
+**响应示例 (失败):**
+
+```json
+{
+  "success": false,
+  "logs": "Error: syntax error in elu_kernel.cpp:42",
+  "error": "Compilation failed"
+}
+```
+
+**注意:**
+- 编译超时时间为 300 秒
+- `clean=true` 会删除之前的 build 目录
+          """)
 async def build_kernel(request: BuildRequest):
     """编译 AscendC kernel"""
     task_dir = TASKS_DIR / request.task_id
@@ -280,7 +603,7 @@ async def build_kernel(request: BuildRequest):
     
     config_file = task_dir / "config.json"
     if config_file.exists():
-        config = json.loads(config_file.read_text())
+        config = json.loads(config_file.read_text(encoding='utf-8'))
     else:
         config = {}
     
@@ -327,7 +650,46 @@ async def build_kernel(request: BuildRequest):
             "logs": ""
         }
 
-@app.post("/api/verify")
+@app.post("/api/verify",
+          summary="验证算子精度",
+          description="""
+验证 AscendC 实现与 PyTorch 参考实现的精度对比。
+
+**请求示例:**
+
+```bash
+curl -X POST "http://localhost:8080/api/verify" \\
+  -H "Content-Type: application/json" \\
+  -d '{"task_id": "550e8400-e29b-41d4-a716-446655440000"}'
+```
+
+**响应示例 (通过):**
+
+```json
+{
+  "passed": true,
+  "output": "================================================================\nStatus    : PASS\n...",
+  "error": null,
+  "comparison": "case[0]: matched"
+}
+```
+
+**响应示例 (失败):**
+
+```json
+{
+  "passed": false,
+  "output": "...",
+  "error": "Accuracy verification failed",
+  "comparison": "case[0]: max_abs_diff=0.05, mismatch_ratio=2.5%"
+}
+```
+
+**注意:**
+- 默认容差: atol=1e-2, rtol=1e-2
+- int8 类型自动使用更宽松容差: atol=1.5
+- 验证超时时间为 120 秒
+          """)
 async def verify_accuracy(request: VerifyRequest):
     """验证算子精度"""
     task_dir = TASKS_DIR / request.task_id
@@ -335,7 +697,7 @@ async def verify_accuracy(request: VerifyRequest):
         raise HTTPException(status_code=404, detail="Task not found")
     
     config_file = task_dir / "config.json"
-    config = json.loads(config_file.read_text()) if config_file.exists() else {}
+    config = json.loads(config_file.read_text(encoding='utf-8')) if config_file.exists() else {}
     
     try:
         env = os.environ.copy()
@@ -373,7 +735,45 @@ async def verify_accuracy(request: VerifyRequest):
             "comparison": ""
         }
 
-@app.post("/api/benchmark")
+@app.post("/api/benchmark",
+          summary="性能基准测试",
+          description="""
+执行性能基准测试，测量算子延迟。
+
+**请求示例:**
+
+```bash
+curl -X POST "http://localhost:8080/api/benchmark" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "impl": "ascendc",
+    "warmup": 5,
+    "repeat": 10,
+    "seed": 0
+  }'
+```
+
+**响应示例:**
+
+```json
+{
+  "success": true,
+  "output": "================================================================\nPerformance Report\n...\nascendc      OK       1.234      1.200 ...",
+  "error": null
+}
+```
+
+**参数说明:**
+- `impl`: 测试的实现类型 (reference/tilelang/ascendc)
+- `warmup`: 预热次数，默认 5
+- `repeat`: 重复次数，默认 10
+- `seed`: 随机种子，默认 0
+
+**注意:**
+- 性能测试超时时间为 180 秒
+- 建议先通过精度验证再进行性能测试
+          """)
 async def benchmark_performance(request: BenchmarkRequest):
     """性能基准测试"""
     task_dir = TASKS_DIR / request.task_id
@@ -381,7 +781,7 @@ async def benchmark_performance(request: BenchmarkRequest):
         raise HTTPException(status_code=404, detail="Task not found")
     
     config_file = task_dir / "config.json"
-    config = json.loads(config_file.read_text()) if config_file.exists() else {}
+    config = json.loads(config_file.read_text(encoding='utf-8')) if config_file.exists() else {}
     
     try:
         env = os.environ.copy()
@@ -417,7 +817,59 @@ async def benchmark_performance(request: BenchmarkRequest):
             "output": ""
         }
 
-@app.post("/api/execute_command")
+@app.post("/api/execute_command",
+          summary="执行自定义命令",
+          description="""
+在任务目录中执行自定义命令，支持上传脚本。
+
+**请求示例 1: 执行简单命令**
+
+```bash
+curl -X POST "http://localhost:8080/api/execute_command" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "command": "python my_script.py --arg1 value1",
+    "timeout": 300
+  }'
+```
+
+**请求示例 2: 上传并执行脚本**
+
+```bash
+curl -X POST "http://localhost:8080/api/execute_command" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "command": "python custom_validator.py",
+    "scripts": {
+      "custom_validator.py": "import sys\\nprint(\'Validating...\')"
+    },
+    "env_vars": {"DEBUG": "1"}
+  }'
+```
+
+**响应示例:**
+
+```json
+{
+  "success": true,
+  "returncode": 0,
+  "stdout": "Validation passed",
+  "stderr": "",
+  "command": "python custom_validator.py"
+}
+```
+
+**安全限制:**
+- 禁止危险命令: rm -rf /, sudo, mkfs, dd 等
+- 命令在任务目录中执行
+- 超时后自动终止
+
+**注意:**
+- 脚本会被上传到任务目录
+- 环境变量会与系统环境变量合并
+          """)
 async def execute_custom_command(request: CustomCommandRequest):
     """执行自定义命令"""
     task_dir = TASKS_DIR / request.task_id
@@ -425,17 +877,17 @@ async def execute_custom_command(request: CustomCommandRequest):
         raise HTTPException(status_code=404, detail="Task not found")
     
     try:
-        # 上传自定义脚本
+        # 上传自定义脚本（强制使用 UTF-8 编码）
         for filename, content in request.scripts.items():
             script_path = task_dir / filename
             script_path.parent.mkdir(parents=True, exist_ok=True)
-            script_path.write_text(content)
+            script_path.write_text(content, encoding='utf-8')
         
         # 准备环境变量
         env = os.environ.copy()
         config_file = task_dir / "config.json"
         if config_file.exists():
-            config = json.loads(config_file.read_text())
+            config = json.loads(config_file.read_text(encoding='utf-8'))
             env["ASCEND_RT_VISIBLE_DEVICES"] = str(config.get("npu_id", 0))
         
         env.update(request.env_vars)
@@ -485,7 +937,7 @@ async def get_task_status(task_id: str):
     
     config_file = task_dir / "config.json"
     if config_file.exists():
-        config = json.loads(config_file.read_text())
+        config = json.loads(config_file.read_text(encoding='utf-8'))
     else:
         config = {}
     
@@ -502,6 +954,34 @@ async def get_task_status(task_id: str):
     }
     
     return status
+
+@app.get("/api/npu_status")
+async def get_npu_status():
+    """
+    查询 NPU 调度器状态
+    
+    返回当前 NPU 设备的负载情况，用于监控和调试。
+    
+    **响应示例:**
+    
+    ```json
+    {
+      "num_npus": 8,
+      "npu_load": {
+        "0": 2,
+        "1": 1,
+        "2": 0,
+        "3": 3,
+        "4": 0,
+        "5": 1,
+        "6": 0,
+        "7": 0
+      },
+      "total_tasks": 7
+    }
+    ```
+    """
+    return npu_scheduler.get_status()
 
 @app.get("/api/download_results/{task_id}")
 async def download_results(task_id: str):
@@ -580,8 +1060,4 @@ async def startup_event():
     cleanup_old_tasks()
 
 if __name__ == "__main__":
-    # 从环境变量读取端口配置，默认为8080
-    port = int(os.environ.get("SERVER_PORT", "8080"))
-    host = os.environ.get("SERVER_HOST", "0.0.0.0")
-    print(f"Starting server on {host}:{port}...")
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
