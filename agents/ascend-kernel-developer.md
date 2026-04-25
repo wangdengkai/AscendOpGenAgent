@@ -14,6 +14,7 @@ skills:
   - case-simplifier
   - tilelang-designer
   - ascendc-translator
+  - ascendc-operator-precision-debug
   - performance-analyzer
   - trace-recorder
 
@@ -348,6 +349,16 @@ while ac_iteration < max_ac_iterations:
 
     验证失败:
       ac_verifier_error = evaluate_ascendc.sh 的错误输出
+
+      (可选) 精度 debug 辅助：
+        若 ac_verifier_error 属于「纯精度不匹配」——有 Verification Report、
+        Comparison 段 max_abs_diff > 0，且无 Traceback / XxxError /
+        shape|type|list|dict mismatch / 编译链接错——调用
+        ascendc-operator-precision-debug skill（phase="phase4"、
+        attempt_id=ac_iteration，其余入参见其 SKILL.md「调用契约」），
+        把产出的 diagnosis + fix_suggestion 作为 4.4 Conductor 分析的
+        补充输入。skill 调用不消耗 ac_iteration，也不改变下方 A/B/C 分类。
+
       → 跳到 4.4 Conductor
 
     ── 4.4 Conductor 分析与决策 ──────────────────────
@@ -364,6 +375,7 @@ while ac_iteration < max_ac_iterations:
       C 类 → 终止，任务失败
       A 类 且 ac_iteration < max_ac_iterations:
         → 生成 ac_conductor_suggestion
+          （精度失败场景下采纳上面 skill 的 fix_suggestion）
         → ac_history_attempts.append(本轮记录)
         → ac_iteration++
         → continue
@@ -447,6 +459,8 @@ while ac_iteration < max_ac_iterations:
 
 如果验证过程中出现失败用例，**仅允许修改 `{output_dir}/kernel/` 目录下的 AscendC kernel 文件**（禁止修改 `model_new_ascendc.py` 或其他任何文件）。每次修复后重新运行验证，**最多尝试 3 次**（含首次验证），超过次数或所有失败用例均已解决后，无论通过与否，直接记录结果并进入下一阶段。
 
+失败用例若属于精度不匹配（闸门规则同 Phase 4.3），可调用 `ascendc-operator-precision-debug` skill（`phase="phase6"`、`attempt_id=phase6_attempt`）辅助定位，agent 校验其 Fix Suggestion 的 Target files 仅在 `{output_dir}/kernel/` 下；越界的 suggestion 丢弃。skill 调用不消耗 `phase6_attempt`；skill 产出的 `debug_{op_name}_precision.py` 已被 `.gitignore` 排除，不视为 Phase 6 意义上的修改。
+
 ---
 
 ## Phase 7: Trace 记录
@@ -463,7 +477,8 @@ while ac_iteration < max_ac_iterations:
 - Agent 的迭代过程
 - 遇到的错误信息
 - 走偏点分析
-- 若 TileLang 未验证或因框架 bug 跳过验证，必须明确记录为“跳过”及原因
+- 若 TileLang 未验证或因框架 bug 跳过验证，必须明确记录为"跳过"及原因
+- 若某轮失败调用了 `ascendc-operator-precision-debug` skill，追加 skill 的 verdict / canonical_subtype / debug 脚本路径，便于审计
 
 ---
 
@@ -488,6 +503,7 @@ while ac_iteration < max_ac_iterations:
 **Skill 参考资料**（各 skill 独立维护，位于 `skills/<skill-name>/references/`）：
 - `tilelang-designer`：BlockLevelDesign.md、TileLangAscendProgrammingGuide.md、TileLangDebug.md、evaluate_tilelang.sh
 - `ascendc-translator`：dsl2Ascendc.md、TileLang-AscendC-API-Mapping.md、AscendC_knowledge/、AscendCVerification.md、evaluate_ascendc.sh
+- `ascendc-operator-precision-debug`：examples/（5 个精度 bug 案例）、scripts/debug_precision_template.py、references/run_precision_debug.sh
 - `performance-analyzer`：performance.py（性能测试脚本）
 - `trace-recorder`：evaluate_tilelang.sh、evaluate_ascendc.sh
 
@@ -503,9 +519,9 @@ while ac_iteration < max_ac_iterations:
 | Phase 3 | TileLang 退化检测失败 | 标记 A-TileLangFallback-Type{N}，不执行功能验证，直接修复迭代 |
 | Phase 3 | TileLang 验证失败 | 记录为辅助检查失败；若属 TileLang 自身问题，可跳过并继续 Phase 4 |
 | Phase 4 | AscendC 退化检测失败 | 标记 A-AscendCFallback-Type{N}，不执行功能验证，消耗迭代次数修复 |
-| Phase 4 | AscendC 验证失败 | 最多 3 次迭代，失败后报告状态 |
+| Phase 4 | AscendC 验证失败 | 最多 3 次迭代，失败后报告状态；精度不匹配场景下 4.3 会调 `ascendc-operator-precision-debug` skill 作为 Conductor 分析的辅助输入 |
 | Phase 4 | B 类环境错误 | 立即终止，任务失败 |
-| Phase 6 | 全量验证失败 | 记录结果，不修复，继续 Phase 7 |
+| Phase 6 | 全量验证失败 | 仅修改 `{output_dir}/kernel/`，最多 3 次修复迭代；超过次数后记录结果继续 Phase 7 |
 | Phase 7 | Trace 记录失败 | 不影响主流程，仅记录失败状态 |
 
 ### Conductor 错误分类

@@ -27,6 +27,7 @@ IDS=""
 NPU_ID=0
 NPU_LIST=""
 OUTPUT_DIR=""
+TIMEOUT_SEC=7200  # 2小时默认超时
 
 # ── 参数解析 ──
 while [[ $# -gt 0 ]]; do
@@ -38,8 +39,9 @@ while [[ $# -gt 0 ]]; do
         --npu)           NPU_ID="$2"; shift 2 ;;
         --npu-list)      NPU_LIST="$2"; shift 2 ;;
         --output)        OUTPUT_DIR="$2"; shift 2 ;;
+        --timeout)       TIMEOUT_SEC="$2"; shift 2 ;;
         -h|--help)
-            echo "用法: bash utils/run_benchmark_ascendc.sh --benchmark-dir <path> --level <N> [--range <start-end> | --ids <id_list>] [--npu <id> | --npu-list <list>] --output <path>"
+            echo "用法: bash utils/run_benchmark_ascendc.sh --benchmark-dir <path> --level <N> [--range <start-end> | --ids <id_list>] [--npu <id> | --npu-list <list>] --output <path> [--timeout <seconds>]"
             echo ""
             echo "参数:"
             echo "  --benchmark-dir  KernelBench 根目录路径 (必填)"
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --npu            单 NPU 设备 ID，如 0 (默认 0，与 --npu-list 互斥)"
             echo "  --npu-list       多 NPU 列表，逗号分隔，如 0,1,2,3,4,5 (与 --npu 互斥，优先级更高)"
             echo "  --output         输出目录 (必填)"
+            echo "  --timeout        单个算子超时时间，单位秒 (默认 7200 = 2小时)"
             echo ""
             echo "示例:"
             echo "  # 单 NPU 串行模式"
@@ -154,6 +157,7 @@ else
     echo "- npu: ${NPU_ID}" >> "$REPORT_FILE"
     echo "- 执行模式: 单 NPU 串行" >> "$REPORT_FILE"
 fi
+echo "- 超时设置: ${TIMEOUT_SEC}s" >> "$REPORT_FILE"
 echo "- 开始时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "| 算子ID | 文件 | 状态 | 耗时(s) |" >> "$REPORT_FILE"
@@ -170,6 +174,7 @@ if [[ "$USE_PARALLEL" == true ]]; then
     echo "================================================================"
     echo "多 NPU 并行模式: ${NPU_COUNT} 个 NPU，${TOTAL} 个算子"
     echo "NPU 列表: ${NPU_LIST}"
+    echo "超时设置: ${TIMEOUT_SEC}s"
     echo "================================================================"
     echo ""
 
@@ -207,7 +212,7 @@ if [[ "$USE_PARALLEL" == true ]]; then
 
                     PROMPT="使用当前agent生成ascendC算子，npu=${npu}，算子描述文件为 ${file}，输出到 ${TARGET_OP_DIR}/"
 
-                    if claude -p "$PROMPT" \
+                    if timeout "$TIMEOUT_SEC" claude -p "$PROMPT" \
                         --allowedTools 'Bash(*)' 'Read(*)' 'Write(*)' 'Edit(*)' 'Glob(*)' 'Grep(*)' 'Skill(*)' \
                         >> "${OUTPUT_DIR}/npu_${npu}.log" 2>&1; then
 
@@ -267,6 +272,7 @@ else
     echo ""
     echo "================================================================"
     echo "单 NPU 串行模式: NPU ${NPU_ID}，${TOTAL} 个算子"
+    echo "超时设置: ${TIMEOUT_SEC}s"
     echo "================================================================"
     echo ""
 
@@ -300,7 +306,7 @@ else
 
         PROMPT="使用当前agent生成ascendC算子，npu=${NPU_ID}，算子描述文件为 ${file}，输出到 ${TARGET_OP_DIR}/"
 
-        if claude -p "$PROMPT" \
+        if timeout "$TIMEOUT_SEC" claude -p "$PROMPT" \
             --allowedTools 'Bash(*)' 'Read(*)' 'Write(*)' 'Edit(*)' 'Glob(*)' 'Grep(*)' 'Skill(*)'; then
             END_TIME=$(date +%s)
             ELAPSED=$((END_TIME - START_TIME))

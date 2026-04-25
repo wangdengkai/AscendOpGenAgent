@@ -12,3 +12,15 @@ output*
 build/
 extra-info/
 *.tar
+# 屏蔽 Windows 区域标识文件
+*:Zone.Identifier
+.codex/
+level_5_output/
+level_5_output_v2/
+benchmarks/NPUKernelBench/level5/
+utils/pack_codex_sessions.sh
+# Archives produced by utils/pack_codex_sessions.sh
+projects_*_*.tar.gz
+# Local device-env-setup config (per-user)
+CLAUDE.md
+.DS_Store
