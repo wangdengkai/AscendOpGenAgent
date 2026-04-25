@@ -1,9 +1,17 @@
 # AscendC Remote Evaluation Server Dependencies
 
+# Web Framework
 fastapi>=0.100.0
-uvicorn>=0.23.0
+uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
-python-multipart>=0.0.6
 
-# For file operations
-pathlib
+# File Handling
+python-multipart>=0.0.6
+aiofiles>=23.0.0
+
+# Logging
+structlog>=23.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+slowapi>=0.1.8  # Rate limiting
