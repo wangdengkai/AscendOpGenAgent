@@ -463,8 +463,21 @@ async def get_task_report(task_id: str) -> str:
 # ==================== 启动 ====================
 
 if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="AscendC Remote Evaluator MCP Server")
+    parser.add_argument("--transport", choices=["stdio", "sse"], default="sse",
+                        help="Transport mode: stdio (for Claude Code) or sse (standalone)")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (for SSE mode)")
+    parser.add_argument("--port", type=int, default=8089, help="Port to listen on (for SSE mode)")
+    
+    args = parser.parse_args()
+    
     print(f"Starting AscendC Remote Evaluator MCP Server")
     print(f"Remote Server URL: {REMOTE_SERVER_URL}")
+    print(f"Transport mode: {args.transport}")
+    if args.transport == "sse":
+        print(f"Listening on {args.host}:{args.port}")
     print(f"Available tools:")
     print(f"  - upload_and_evaluate")
     print(f"  - remote_build_kernel")
@@ -473,4 +486,9 @@ if __name__ == "__main__":
     print(f"  - execute_custom_command")
     print(f"  - check_task_status")
     
-    mcp.run()
+    if args.transport == "sse":
+        # Run with SSE transport for standalone mode
+        mcp.run(transport="sse", host=args.host, port=args.port)
+    else:
+        # Run with stdio transport for Claude Code integration
+        mcp.run(transport="stdio")

@@ -147,10 +147,15 @@ target_include_directories(pybind11_lib PRIVATE
 execute_process(COMMAND python3 -m pybind11 --includes
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE PYBIND11_INC
+  RESULT_VARIABLE PYBIND11_RESULT
 )
-string(REPLACE " " ";" PYBIND11_INC ${{PYBIND11_INC}})
+if(PYBIND11_RESULT EQUAL 0 AND PYBIND11_INC)
+  string(REPLACE " " ";" PYBIND11_INC_LIST ${{PYBIND11_INC}})
+else()
+  set(PYBIND11_INC_LIST "")
+endif()
 target_compile_options(pybind11_lib PRIVATE
-  ${{PYBIND11_INC}}
+  ${{PYBIND11_INC_LIST}}
   -D_GLIBCXX_USE_CXX11_ABI=1
 )
 
