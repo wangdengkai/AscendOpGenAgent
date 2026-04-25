@@ -323,6 +323,13 @@ AscendOpGenAgent/
 │       ├── {op_name}.pt        # 包含 input_data 和可选 gpu_output
 │       ├── {op_name}.py        # GPU Triton kernel 源码
 │       └── vllm_gpu_perf.csv   # GPU 性能基线数据
+├── remote_server/              # 远程评估服务器
+│   ├── app.py                  # FastAPI 应用主文件
+│   ├── start.sh                # 启动脚本
+│   ├── requirements.txt        # Python 依赖
+│   ├── .env.example            # 配置示例文件
+│   ├── .env                    # 实际配置文件（需自行创建）
+│   └── README.md               # 服务器使用说明
 └── skills/                     # Skill 实现目录
     ├── ascendc_evalution/
     ├── ascend_benchmark_evaluator/
@@ -340,6 +347,41 @@ AscendOpGenAgent/
     └── reference_generation/
 
 ```
+
+## 远程评估服务器
+
+本项目提供了一个基于 FastAPI 的远程评估服务器，支持算子的编译、验证和性能测试。
+
+### 快速启动
+
+```bash
+cd remote_server
+./start.sh
+```
+
+默认情况下，服务器将在 `http://0.0.0.0:8080` 上运行。
+
+### 配置端口
+
+如果端口 8080 已被占用，可以通过以下方式更改：
+
+**方法 1：使用 .env 文件（推荐）**
+
+```bash
+cd remote_server
+cp .env.example .env
+# 编辑 .env 文件，设置 SERVER_PORT=9000
+./start.sh
+```
+
+**方法 2：使用环境变量**
+
+```bash
+cd remote_server
+SERVER_PORT=9000 ./start.sh
+```
+
+更多详细信息，请参阅 [remote_server/README.md](remote_server/README.md)。
 
 
 ## 单用例多 Shape 支持

@@ -580,4 +580,8 @@ async def startup_event():
     cleanup_old_tasks()
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    # 从环境变量读取端口配置，默认为8080
+    port = int(os.environ.get("SERVER_PORT", "8080"))
+    host = os.environ.get("SERVER_HOST", "0.0.0.0")
+    print(f"Starting server on {host}:{port}...")
+    uvicorn.run(app, host=host, port=port)

@@ -20,7 +20,7 @@ echo "Installing dependencies..."
 pip install -r requirements.txt
 
 # Set remote server URL
-export REMOTE_SERVER_URL=${REMOTE_SERVER_URL:-http://localhost:8080}
+export REMOTE_SERVER_URL=${REMOTE_SERVER_URL:-http://localhost:8089}
 echo "Remote Server URL: $REMOTE_SERVER_URL"
 
 # Start MCP server

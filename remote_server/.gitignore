@@ -5,6 +5,9 @@ __pycache__/
 *.so
 .Python
 
+# Environment variables
+.env
+
 # Tasks
 ascend_tasks/
 tmp/
