@@ -24,6 +24,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动时清理过期任务
+    cleanup_old_tasks()
+    yield
+    # 关闭时的清理工作（如果需要）
+
 app = FastAPI(
     title="AscendC Remote Evaluator",
     version="1.0.0",
@@ -110,6 +120,7 @@ curl -X POST "http://localhost:8080/api/benchmark" \\
         "name": "Apache 2.0",
         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
     },
+    lifespan=lifespan  # 使用新的 lifespan 方式
 )
 
 # ==================== 配置 ====================
@@ -1054,10 +1065,19 @@ async def task_progress_websocket(websocket: WebSocket, task_id: str):
             "error": str(e)
         })
 
-@app.on_event("startup")
-async def startup_event():
-    """启动时清理过期任务"""
-    cleanup_old_tasks()
-
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="AscendC Remote Evaluation Server")
+    parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"),
+                        help="Host to bind to")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")),
+                        help="Port to listen on")
+    
+    args = parser.parse_args()
+    
+    print(f"Starting server on {args.host}:{args.port}...")
+    print(f"Server URL: http://{args.host}:{args.port}")
+    print()
+    
+    uvicorn.run(app, host=args.host, port=args.port)
