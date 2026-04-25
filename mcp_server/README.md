@@ -114,9 +114,11 @@ defaults:
 task_name="31_ELU"
 model_py_path="tasks/31_ELU/model.py"
 kernel_dir="tasks/31_ELU/kernel"
-soc_version="Ascend910B2"
+# soc_version 不指定，服务器自动检测（推荐）
 npu_id=0
 ```
+
+**注意**: `soc_version` 参数现在是可选的，服务器会自动检测 SoC 版本。如果需要手动指定，可以添加 `soc_version="Ascend910B3"`。
 
 ### 示例 2: 分步执行
 

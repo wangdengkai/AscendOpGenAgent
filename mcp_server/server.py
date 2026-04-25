@@ -85,8 +85,8 @@ async def upload_and_evaluate(
     task_name: str,
     model_py_path: str,
     kernel_dir: str,
-    soc_version: str = "Ascend910B2",
-    npu_id: int = 0,
+    soc_version: Optional[str] = None,  # 改为可选，None 表示自动检测
+    npu_id: Optional[int] = None,  # None 表示服务器自动分配
     clean_build: bool = True,
     enable_benchmark: bool = True
 ) -> Dict:
@@ -101,9 +101,13 @@ async def upload_and_evaluate(
     - **kernel_dir**: kernel 目录路径
     
     ### 可选参数
-    - **soc_version**: SoC 版本，默认 "Ascend910B2"
+    - **soc_version**: SoC 版本（可选，不指定则服务器自动检测）
       - 可选值: "Ascend910B1", "Ascend910B2", "Ascend910B3"
-    - **npu_id**: NPU 设备 ID，默认 0
+      - 默认: None (自动检测)
+    - **npu_id**: NPU 设备 ID（可选，不指定则服务器自动分配）
+      - None: 服务器自动选择负载最低的 NPU（推荐）
+      - 0-7: 偏好使用指定 NPU（服务器可能根据负载调整）
+      - 默认: None
     - **clean_build**: 是否清理后重新编译，默认 True
     - **enable_benchmark**: 是否执行性能测试，默认 True
     
@@ -114,13 +118,23 @@ async def upload_and_evaluate(
     
     ## 使用示例
     
+    ### 示例 1: 完全自动（推荐）
+    ```python
+    result = await upload_and_evaluate(
+        task_name="31_ELU",
+        model_py_path="tasks/31_ELU/model.py",
+        kernel_dir="tasks/31_ELU/kernel"
+        # npu_id 不指定，服务器自动分配最优设备
+    )
+    ```
+    
+    ### 示例 2: 偏好指定 NPU
     ```python
     result = await upload_and_evaluate(
         task_name="31_ELU",
         model_py_path="tasks/31_ELU/model.py",
         kernel_dir="tasks/31_ELU/kernel",
-        soc_version="Ascend910B2",
-        npu_id=0
+        npu_id=2  # 偏好使用 NPU 2，但服务器可能根据负载调整
     )
     ```
     """
