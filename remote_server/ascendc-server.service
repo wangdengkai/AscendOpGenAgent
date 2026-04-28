@@ -1,0 +1,44 @@
+[Unit]
+Description=AscendC Remote Evaluation Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/root/AscendOpGenAgent/remote_server
+
+# 环境变量
+Environment="PORT=9002"
+Environment="HOST=0.0.0.0"
+Environment="TASKS_DIR=/tmp/ascend_tasks"
+Environment="MAX_CONCURRENT_TASKS=2"
+
+# 资源限制
+MemoryMax=4G
+MemoryHigh=3G
+TasksMax=100
+
+# 自动重启
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ascendc-server
+
+# 执行命令
+ExecStart=/usr/bin/python3 app.py --host ${HOST} --port ${PORT}
+ExecStop=/bin/kill -SIGTERM $MAINPID
+TimeoutStopSec=30
+
+# 安全设置
+NoNewPrivileges=no
+ProtectSystem=false
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target
