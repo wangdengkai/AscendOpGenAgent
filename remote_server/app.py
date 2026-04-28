@@ -80,6 +80,7 @@ class TaskUpload(BaseModel):
     task_name: str = Field(..., min_length=1, max_length=100, description="任务名称")
     model_py: str = Field(..., min_length=1, description="model.py 内容")
     kernel_files: Dict[str, str] = Field(..., description="Kernel 文件字典 {filename: content}")
+    model_new_ascendc: Optional[str] = Field(None, description="model_new_ascendc.py 内容")
     soc_version: Optional[str] = Field(None, description="SoC 版本，不指定则自动检测")
     npu_id: Optional[int] = Field(None, ge=-1, le=7, description="NPU 设备 ID，None 表示自动分配")
     clean_build: bool = Field(True, description="是否清理后重新编译")
