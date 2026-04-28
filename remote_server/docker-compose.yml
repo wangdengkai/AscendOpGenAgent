@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  ascendc-server:
+    build:
+      context: ..
+      dockerfile: remote_server/Dockerfile
+    container_name: ascendc-remote-server
+    restart: unless-stopped  # 自动重启
+    
+    # 端口映射
+    ports:
+      - "9002:9002"
+    
+    # 环境变量
+    environment:
+      - PORT=9002
+      - HOST=0.0.0.0
+      - TASKS_DIR=/tmp/ascend_tasks
+      - MAX_CONCURRENT_TASKS=2
+      - WORKERS=1
+    
+    # 资源限制（防止 OOM）
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: '4'
+        reservations:
+          memory: 2G
+          cpus: '2'
+    
+    # 卷挂载
+    volumes:
+      - ascend-tasks:/tmp/ascend_tasks
+      - ../tasks:/app/tasks:ro
+      - ./logs:/app/logs
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # NPU 设备映射（如果需要访问 NPU）
+    devices:
+      - /dev/davinci0:/dev/davinci0
+      - /dev/davinci_manager:/dev/davinci_manager
+      - /dev/devmm_svm:/dev/devmm_svm
+      - /dev/hisi_hdc:/dev/hisi_hdc
+    
+    # 网络模式
+    network_mode: host  # 或者使用 bridge
+    
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ascend-tasks:
+    driver: local

@@ -1,6 +1,71 @@
 # 服务器快速启动指南
 
-## 🚀 **在服务器上执行以下步骤**
+## 🐳 **容器环境部署（推荐）**
+
+### **方式 1: Docker Compose（最简单）⭐⭐⭐**
+
+```bash
+cd /home/root/AscendOpGenAgent/remote_server
+
+# 1. 启动服务
+docker-compose up -d
+
+# 2. 查看日志
+docker-compose logs -f
+
+# 3. 验证服务
+curl http://localhost:9002/health
+
+# 4. 停止服务
+docker-compose down
+```
+
+**优点**:
+- ✅ 自动重启（restart: unless-stopped）
+- ✅ 资源限制（memory: 6G）
+- ✅ 健康检查
+- ✅ 日志管理
+- ✅ 一键部署
+
+---
+
+### **方式 2: 使用 start_container.sh**
+
+```bash
+cd /home/root/AscendOpGenAgent/remote_server
+
+# 1. 创建 .env 配置文件
+cat > .env << 'EOF'
+PORT=9002
+HOST=0.0.0.0
+TASKS_DIR=/tmp/ascend_tasks
+MAX_CONCURRENT_TASKS=2
+WORKERS=1
+EOF
+
+# 2. 赋予执行权限
+chmod +x start_container.sh
+
+# 3. 后台启动
+nohup ./start_container.sh > logs/startup.log 2>&1 &
+
+# 4. 查看日志
+tail -f logs/server.log
+
+# 5. 停止服务
+pkill -f "python3 app.py"
+```
+
+**特点**:
+- ✅ 自动重启（最多 10 次）
+- ✅ 内存限制（ulimit 6GB）
+- ✅ 自动清理旧任务
+- ✅ 退出代码诊断
+- ✅ 不需要 systemd/Docker
+
+---
+
+## 🖥️ **非容器环境部署**
 
 ### **步骤 1: 拉取最新代码**
 
