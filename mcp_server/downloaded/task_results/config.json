@@ -1,0 +1,9 @@
+{
+  "task_name": "GELU",
+  "soc_version": "Ascend910B2",
+  "npu_id": 4,
+  "preferred_npu": 0,
+  "clean_build": true,
+  "created_at": "2026-04-28T03:04:08.829941",
+  "detected_soc": true
+}

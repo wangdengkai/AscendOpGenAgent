@@ -96,25 +96,32 @@ class AscendCMCPClient:
         model_path = Path(model_py_path)
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {model_py_path}")
-        
+
         model_py = model_path.read_text(encoding='utf-8')
-        
+
+        # 读取 model_new_ascendc.py（如果存在）
+        model_ascendc_path = model_path.parent / "model_new_ascendc.py"
+        model_new_ascendc = None
+        if model_ascendc_path.exists():
+            model_new_ascendc = model_ascendc_path.read_text(encoding='utf-8')
+
         # 读取 kernel 文件
         kernel_path = Path(kernel_dir)
         if not kernel_path.exists():
             raise FileNotFoundError(f"Kernel directory not found: {kernel_dir}")
-        
+
         kernel_files = {}
-        for file in kernel_path.glob("*.cpp"):
-            if file.is_file():
-                kernel_files[file.name] = file.read_text(encoding='utf-8')
-        
+        for pattern in ("*.cpp", "*.h"):
+            for file in kernel_path.glob(pattern):
+                if file.is_file():
+                    kernel_files[file.name] = file.read_text(encoding='utf-8')
+
         if not kernel_files:
             raise ValueError(f"No .cpp files found in {kernel_dir}")
-        
+
         if "pybind11.cpp" not in kernel_files:
             raise ValueError("pybind11.cpp not found in kernel directory")
-        
+
         # 构建请求数据
         data = {
             "task_name": task_name,
@@ -122,6 +129,9 @@ class AscendCMCPClient:
             "kernel_files": kernel_files,
             "clean_build": clean_build
         }
+
+        if model_new_ascendc:
+            data["model_new_ascendc"] = model_new_ascendc
         
         if soc_version:
             data["soc_version"] = soc_version
