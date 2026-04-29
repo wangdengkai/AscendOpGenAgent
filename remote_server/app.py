@@ -21,6 +21,8 @@ import signal
 import logging
 from pathlib import Path
 from datetime import datetime
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
