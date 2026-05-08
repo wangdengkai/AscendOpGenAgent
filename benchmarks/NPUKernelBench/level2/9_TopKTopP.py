@@ -82,7 +82,10 @@ def get_input_groups():
                         tensors[name] = torch.randint(0, max_val, shape, dtype=dtype)
                     else:
                         dtype = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16, 'int32': torch.int32, 'int64': torch.int64, 'int8': torch.int8, 'bool': torch.bool}.get(dtype_str, torch.float32)
-                        tensors[name] = torch.randn(shape, dtype=dtype)
+                        if name == 'logits':
+                            tensors[name] = ((torch.randn(shape) * 2.0).exp() - 2.0).clamp(max=torch.finfo(dtype).max).to(dtype)
+                        else:
+                            tensors[name] = torch.randn(shape, dtype=dtype)
                 elif inp['type'] == 'attr':
                     tensors[inp['name']] = inp['value']
 
@@ -92,7 +95,7 @@ def get_input_groups():
                 if 'k' in tensors and tensors['k'] is not None:
                     tensors['k'] = tensors['k'].clamp(min=1, max=min(1024, N))
                 if 'p' in tensors and tensors['p'] is not None:
-                    tensors['p'] = torch.rand(tensors['p'].shape, dtype=tensors['p'].dtype)
+                    tensors['p'] = 0.5 + torch.rand(tensors['p'].shape, dtype=tensors['p'].dtype) * 0.5
 
             # Build input list in order matching forward signature
             group = []

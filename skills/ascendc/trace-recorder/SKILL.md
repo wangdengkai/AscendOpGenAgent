@@ -80,9 +80,29 @@ argument-hint: >
 
 - 结果: {性能数据}
 - performance-analyzer 执行详情:
-  - 测试的实现: {reference/tilelang/ascendc}
-  - 各实现平均耗时: {reference: Xms, tilelang: Yms, ascendc: Zms}
-  - 加速比: {tilelang vs reference: X.x, ascendc vs reference: Y.y}
+  - 测试配置: device=npu, warmup=5, repeat=10, seed=0
+  - 测试的实现: reference / tilelang / ascendc
+  - 总体统计:
+    - reference: mean=0.086ms, median=0.070ms, min=0.050ms, max=0.362ms, std=0.046ms
+    - tilelang: mean=0.327ms, median=0.202ms, min=0.147ms, max=3.284ms, std=0.503ms
+    - ascendc: mean=0.186ms, median=0.090ms, min=0.054ms, max=2.443ms, std=0.366ms
+  - 性能结论:
+    - 三个实现均执行成功（Status=OK）
+    - AscendC 整体快于 TileLang，按 mean 统计约快 1.76x（0.327 / 0.186）
+    - AscendC 仍慢于 reference，按 mean 统计约为 reference 的 0.46x；reference 约快 2.16x
+    - TileLang 慢于 reference，按 mean 统计约为 reference 的 0.26x；reference 约快 3.80x
+  - 典型大 shape case 观察:
+    - case[47] shape=(1, 8, 16384, 64), float16, half: reference=0.169ms, tilelang=1.065ms, ascendc=0.626ms
+    - case[48] shape=(1, 8, 32768, 64), float16, half: reference=0.261ms, tilelang=1.915ms, ascendc=1.155ms
+    - case[49] shape=(1, 8, 32768, 64), bfloat16, interleave: reference=0.292ms, tilelang=3.271ms, ascendc=2.434ms
+
+## 汇总表报告
+
+- 说明: 延迟单位为 ms，按 performance-analyzer 的 mean 统计；加速比 =  PyTorch 参考延迟/生成 AscendC 代码延迟 。加速比>0.6性能0.6x pytorch填是，否则填否。性能0.8x pytorch同理。
+
+| Level | Problem ID | 算子名称 | 算子类型 | 编译通过 | 精度正确 | PyTorch 参考延迟 | 生成AscendC代码延迟 | 加速比 | 最终状态 | 精度正确 | 性能0.6x pytorch | 性能0.8x pytorch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | 1 | RotaryMul | vector | ✅ | ✅ | 0.086 | 0.186 | 0.46 | 成功 | 是 | 否 | 否 |
 
 ## 评测输出摘要
 
