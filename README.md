@@ -4,382 +4,288 @@
 
 中文 | [English](README.en.md)
 
-**AscendOpGenAgent** 是一个面向 Ascend NPU 的自动化算子生成与评测框架。本项目基于 Triton/AscendC 自动生成并验证高性能算子代码，旨在大幅提升 Ascend 架构下的算子开发效率与质量。
+**AscendOpGenAgent** 是一个面向昇腾（Ascend）NPU 的自动化算子生成与评测框架。本项目内置**进化式性能优化系统**，通过世界模型驱动的搜索策略、多层级 Profiling 诊断和多 Agent 协同，自动搜索出高性能 AscendC 算子实现，实现从"能用"到"好用"的性能跃迁。
 
-## 目录
-
-- [AscendOpGenAgent](#ascendopgenagent)
-  - [目录](#目录)
-  - [核心功能](#核心功能)
-  - [快速开始](#快速开始)
-    - [1. 环境要求](#1-环境要求)
-    - [2. 安装与配置](#2-安装与配置)
-    - [3. 使用场景指南](#3-使用场景指南)
-      - [**3.1 Triton**](#31-triton)
-      - [场景一：单算子生成](#场景一单算子生成)
-      - [场景二：Benchmark 批量评测](#场景二benchmark-批量评测)
-      - [场景三：AutoResearch 多轮迭代优化](#场景三autoresearch-多轮迭代优化)
-      - [**3.2 AscendC**](#32-ascendc)
-      - [场景一：单算子生成 (Lingxi-code Agent)](#场景一单算子生成-lingxi-code-agent)
-      - [场景二：Benchmark 批量评测 (Ascend-Benchmark-Evaluator)](#场景二benchmark-批量评测-ascend-benchmark-evaluator)
-    - [评测基线](#评测基线)
-      - [Triton](#triton)
-      - [AscendC](#ascendc)
-  - [项目结构](#项目结构)
-  - [许可证](#许可证)
-
-## 核心功能
-
-| 算子类型 | 模块 | 定位 | 核心能力 |
-|------|------|------|----------|
-| **Triton** | **AKG-Triton Agent** | 单算子交互式生成 | 任务提取 → 代码生成 → 评测验证（精度对齐与性能测试） |
-| **Triton**  | **Benchmark-Evaluator** | 一键批量评测 | 执行指定 Benchmark 评测，自动总结并生成详细报告 |
-| **Triton**  | **AutoResearch** | 多轮迭代性能优化 | plan → edit → eval → keep/discard 闭环，Claude Code hook 强约束的阶段机 |
-| **AscendC** | **Lingxi_code Agent** | AscendC 单算子交互式生成 | 代码生成 → 评测验证（精度对齐与性能测试） |
-| **AscendC** | **Ascend-Benchmark-Evaluator** | AscendC 算子一键批量评测 | 执行指定 Benchmark 评测，自动总结并生成详细报告 |
-
->  **共享内核**：AKG-Triton Agent、Benchmark-Evaluator两者底层共用代码生成 Agent，统一处理“代码生成 → 验证 → 性能测试”的核心工作流，确保生成逻辑的一致性与高复用性。
-
-##  快速开始
-
-### 1. 环境要求
-
-在运行本项目之前，请确保您的环境满足以下要求：
-- Python 3.8+
-- Ascend CANN 8.0+
-- Triton Ascend
-- PyTorch 2.0+
-- Claude Code CLI (请确保已正确安装并配置)
-- tilelang-ascend (参考https://github.com/tile-ai/tilelang-ascend/blob/ascendc_pto/README.md#method-3-compile-and-install-from-source 安装)
-
-### 2. 安装与配置
-
-克隆本项目并配置 Claude Code 环境：
-
-```bash
-# 1. 克隆项目并进入目录
-git clone https://github.com/your-repo/AscendOpGenAgent.git
-cd AscendOpGenAgent
-
-# 2. 配置 Claude Code（可选，如需自定义配置）
-# Claude Code 会自动识别项目中的 .claude/CLAUDE.md 配置文件
+```
+                    ┌─────────────────────────────────────────┐
+                    │           进化系统核心理念              │
+                    │                                         │
+                    │   World Model  ──→  Strategy Search     │
+                    │        ↑                    │           │
+                    │        │              Parallel Gen      │
+                    │        │                    │           │
+                    │   Evidence ←── Profiling ←─ Evaluate    │
+                    └─────────────────────────────────────────┘
 ```
 
-完成后，即可在项目目录中使用 Claude Code 进行开发。
+## 核心亮点
 
-### 3. 使用场景指南
-
-本项目主要提供两个核心使用场景，请根据需求选择对应的 Agent 或 Skill。
-#### **3.1 Triton**
-
-#### 场景一：单算子生成
-
-适用于开发者需要快速生成、验证某个特定算子的 Triton 实现。
-
-**操作步骤**：
-
-1. 在 AscendOpGenAgent 目录下配置 Agent和skills：
-```bash
-mkdir -p .claude
-mkdir -p .claude/skills
-mv agents/triton-ascend-coder.md .claude/CLAUDE.md
-mv skills/triton/* .claude/skills/
-```
-
-2. 进入 AscendOpGenAgent 目录，启动 claude：
-```bash
-claude
-```
-
-3. 输入算子生成 Prompt：
-```text
-生成一个基于 Triton-Ascend 框架的 softmax 算子实现。目标设备架构为 ascend910b1，请将生成的代码文件输出至 /path/to/output/ 目录下。
-```
-
-**执行流程**：Agent 自动执行 Phase 0-5：参数确认 → 任务构建 → 算法设计 → 代码生成与验证（迭代） → 性能优化与验证（迭代） → 输出报告。
+- **世界模型驱动的定向进化** — 不是随机搜索，而是通过决策树持续积累证据，用效用函数选择最有价值的优化方向
+- **多层级 Profiling 闭环** — CSV 级快速诊断 + 指令级深度空泡分析，精准定位 MTE2/MTE3 搬运瓶颈、D 类/C 类空泡、跨核负载不均衡
+- **Profiling 驱动的自适应优化** — 不依赖固定策略库，根据实际 profiling 瓶颈数据自主设计针对性优化方案
+- **59 条人工编写策略 + 动态策略发现** — 策略库覆盖双缓冲、自适应分块、混合精度等维度，open_exploration 模式可自动发现并提炼新策略
+- **Supervisor Agent** — 当进化停滞或 profiling 无法定向时，引入外部视角打破局部最优
+- **双管线支持** — lingxi-evo（TileLang→AscendC 全流程）和 ops-evo（直接优化已有 AscendC 代码）
 
 ---
 
-#### 场景二：Benchmark 批量评测
+## 进化优化系统
 
-适用于批量评测算子的生成效果，支持单 NPU 串行或多 NPU 并行执行。
+### 架构概览
 
-**支持两种输入模式：**
-- **标准模式**：使用 KernelBench（PyTorch Model）
-- **GPU 迁移模式**：使用 TritonNPUKernelBench（GPU Triton Code → NPU Triton Code）
+本项目提供两条进化管线，覆盖不同的算子开发场景：
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         Evolution Pipelines                    │
+├──────────────────────────────────┬───────────────────────────────────────┤
+│    lingxi-evo (TileLang 管线)    │       ops-evo (直接修改管线)          │
+├──────────────────────────────────┼───────────────────────────────────────┤
+│ 输入: PyTorch Model 文件         │ 输入: ops仓已有算子代码               │
+│ 流程: Model→TileLang→AscendC    │ 流程: 直接修改 kernel/tiling 代码     │
+│ 子Agent: lingxi-partial         │ 子Agent: ops-partial                 │
+│ 并行: 多子Agent并行生成+评估     │ 并行: 多子Agent并行生成, 串行构建评估 │
+│ 场景: 新算子从零开发             │ 场景: 已有算子性能优化                │
+└──────────────────────────────────┴───────────────────────────────────────┘
+```
+
+### 世界模型决策树
+
+进化的核心是一棵持久化的决策树（`world_model.json`），每个节点代表一个优化方向：
+
+```
+                            root (baseline, 1.0x)
+                         ┌────┼────┬────┐
+                        n1   n2   n3   n4
+                     (2.3x) (1.7x) [F]  ...
+                    ┌──┴──┐
+                  n1_1  n1_2          ← 在最优分支上深度探索
+                 (2.8x)  ...
+                   │
+                 n1_1_1              ← profiling_driven: 基于瓶颈诊断的定向优化
+```
+
+节点属性包括：
+- **strategy_combination** — 应用的策略组合（如 `["P1", "P7"]` 双缓冲+对齐）
+- **mode** — 探索模式：`strategy_guided` | `open_exploration` | `profiling_driven`
+- **score** — 相对基线的加速比
+- **profiling_insight** — CSV 级瓶颈诊断（每轮必做）
+- **profiling_evidence** — 指令级深度空泡分析（条件触发）
+
+### 进化循环
+
+每轮进化执行以下步骤：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        单轮进化流程                                  │
+│                                                                     │
+│  ┌──────┐     ┌──────┐     ┌──────┐     ┌──────┐     ┌──────────┐ │
+│  │Select│ ──→ │ Gen  │ ──→ │Build │ ──→ │ Eval │ ──→ │ Analyze  │ │
+│  │ 选节点│     │并行生成│     │ 编译 │     │ 评估 │     │Profiling │ │
+│  └──────┘     └──────┘     └──────┘     └──────┘     │+ Refine  │ │
+│      ↑                                                └────┬─────┘ │
+│      │                                                     │       │
+│      └─────────────── 更新世界模型 ←───────────────────────┘       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Select** — 效用函数评估所有 open 节点，选取最有价值的 N 个方向
+2. **Generate** — 并行启动子 Agent，每个按指定策略组合生成/修改代码
+3. **Build & Evaluate** — 编译、精度验证、性能测试（支持 build retry）
+4. **Profiling & Analyze** — CSV 级 + 深度空泡分析，诊断瓶颈类型
+5. **Refine** — 基于评测结果更新决策树：生成子节点（深度优化）、标记失败、累积证据
+
+### 三种探索模式
+
+| 模式 | 触发条件 | 行为 |
+|------|---------|------|
+| `strategy_guided` | 默认 | 从 59 条策略库中选取组合，应用到代码生成 |
+| `open_exploration` | 连续停滞 ≥2 轮 | 禁止读取策略库，从最优代码+profiling 自主推理新方向 |
+| `profiling_driven` | 深度空泡分析触发 | 基于具体 profiling 瓶颈数据（如"MTE2 stall 62%"），设计针对性 patch |
+
+### Profiling 管线
+
+本项目实现了两层 profiling 诊断，形成完整的性能分析闭环：
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                      Profiling Pipeline                          │
+│                                                                  │
+│  第一层: CSV 级快速诊断 (每轮必做)                                │
+│  ┌─────────────────────────────────────────────────────┐        │
+│  │ analyze_profiling.py → bottleneck + pipeline_summary │        │
+│  │ 输出: memory_bound / compute_bound / scalar_bound   │        │
+│  └───────────────────────────┬─────────────────────────┘        │
+│                              │                                   │
+│              ┌───────────────┴───────────────┐                  │
+│              │ 条件触发: balanced + 性能远不达标 │                  │
+│              └───────────────┬───────────────┘                  │
+│                              ↓                                   │
+│  第二层: 指令级深度空泡分析 (条件触发)                             │
+│  ┌─────────────────────────────────────────────────────┐        │
+│  │ run_deep_profiling.py → profiling_evidence           │        │
+│  │ 输出: D类空泡%, C类空泡%, 跨核不均衡比,               │        │
+│  │       主等待流水线, 空泡模式, DMA效率                  │        │
+│  └─────────────────────────────────────────────────────┘        │
+│                                                                  │
+│  诊断结果 → 注入子Agent的 [Profiling Context] → 指导下轮优化      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 策略库
+
+`evolution/meta_prompts/strategies/` 包含 59 条人工编写策略，分为三大类：
+
+| 类型 | 前缀 | 数量 | 示例 |
+|------|------|------|------|
+| 性能优化 | `perf_` | 46 条（P1-P52） | P1 双缓冲、P2 自适应分块、P4 多核负载均衡、P10 向量化搬运 |
+| 精度保障 | `acc_` | 8 条（A1-A8） | A1 FP32中间计算、A2 Welford算法、A6 高精度Rsqrt |
+| 数据类型 | `dtype_` | 5 条（D1-D5） | D1 混合精度、D2 模板化内核、D4 FP8/INT4转换 |
+
+open_exploration 模式可自动发现新策略（`disc_X*.md`），扩展策略库。
+
+### Supervisor Agent
+
+当进化陷入停滞时，进化系统会自动引入 Supervisor Agent 提供外部视角：
+
+| 触发条件 | 场景 |
+|---------|------|
+| 连续停滞 ≥ 阈值轮 | 策略搜索空间可能已饱和 |
+| 深度 profiling 无法定向 | 瓶颈为 near_optimal/balanced 但性能仍远不达标 |
+| profiling_driven 全失败 | 基于 profiling 的定向优化方向均未奏效 |
+
+Supervisor 从 8 个维度（算法级优化、硬件架构利用、数据流重组等）分析后，注入新的 open 节点到决策树。
+
+### 知识库
+
+`evolution/knowledge_base/` 提供领域知识支撑：
+
+```
+knowledge_base/
+├── INDEX.md                    # 知识库索引
+├── algorithm_insights/         # 算法洞察（归约、Softmax、LayerNorm等）
+├── ascendc_api/                # AscendC API 参考
+├── hardware/                   # 硬件规格（UB大小、核数、带宽）
+├── optimization_patterns/      # 优化模式（双缓冲、分块、向量化）
+└── proven_solutions/           # 已验证的优化方案
+```
 
 ---
 
-##### 子模式 A：标准模式（KernelBench）
+## 单次生成（lingxi Agent）
 
-适用于标准 PyTorch 算子的批量生成与评测。
+除了进化优化，本项目也支持单次算子生成，适用于快速原型开发：
 
-**操作步骤**：
-
-1. 在 AscendOpGenAgent 目录下创建 `.claude` 目录并配置 Agent：
-```bash
-mkdir -p .claude
-mkdir -p .claude/skills
-mv agents/triton-ascend-coder.md .claude/CLAUDE.md
-mv skills/triton/* .claude/skills/
+```
+PyTorch Model → 用例精简 → TileLang 设计（block/tile level）
+                                          ↓
+评估结果 ← 全量验证 ← 性能分析 ← AscendC 转译（迭代验证）
 ```
 
-2. 进入 AscendOpGenAgent 目录，执行批量调度脚本：
+### 8 Phase 管线
 
-**单 NPU 串行模式**：
-```bash
-cd /path/to/AscendOpGenAgent
-bash utils/run_benchmark_triton.sh \
-    --benchmark-dir /path/to/KernelBench \
-    --level 1 \
-    --range 1-30 \
-    --npu 0 \
-    --output /path/to/output
-```
+| Phase | Skill | 输出 |
+|-------|-------|------|
+| 0 | 参数确认 | npu, op_file, output_dir |
+| 1 | 环境准备 | model.py, 测试用例复制 |
+| 2 | case-simplifier | 精简后的测试用例（≤10） |
+| 3 | tilelang-designer | design/block_level/, design/tile_level/ |
+| 4 | ascendc-translator | kernel/, model_new_ascendc.py |
+| 5 | performance-analyzer | 性能对比报告 |
+| 6 | 全量验证 | 全量用例验证结果 |
+| 7 | trace-recorder | trace.md 执行记录 |
 
-**多 NPU 并行模式**（推荐）：
-```bash
-cd /path/to/AscendOpGenAgent
-bash utils/run_benchmark_triton.sh \
-    --benchmark-dir /path/to/KernelBench \
-    --level 1 \
-    --range 1-30 \
-    --npu-list "0,1,2,3,4,5" \
-    --output /path/to/output
-```
-
-**参数说明**：
-- `--benchmark-dir`: Benchmark 根目录路径（必填）
-- `--level`: Level 编号，如 1, 2, 3, 4（必填）
-- `--range`: 算子范围，如 `1-30`（与 `--ids` 二选一）
-- `--ids`: 指定算子编号列表，逗号分隔，如 `3,7,15`（与 `--range` 二选一）
-- `--npu`: 单 NPU 设备 ID，如 0（默认 0，与 `--npu-list` 互斥）
-- `--npu-list`: 多 NPU 列表，逗号分隔，如 `0,1,2,3,4,5`（与 `--npu` 互斥，优先级更高）
-- `--output`: 输出目录（必填）
+Phase 3-4 支持迭代修复：AST 退化检测（validate_*.py）+ Conductor 分析（A/B/C 错误分类）。
 
 ---
 
-##### 子模式 B：GPU Triton Code → NPU（TritonNPUKernelBench）
+## 快速开始
 
-适用于将已有的 GPU Triton kernel 迁移为 NPU Triton 实现，并与 GPU 性能进行直接对比。
+### 环境准备
 
-**前置准备**：
-将以下文件上传到 `benchmarks/TritonNPUKernelBench/` 目录（文件名必须同名）：
-- `{op_name}.pt` - 包含 `input_data`（必需）和可选的 `gpu_output`
-- `vllm_gpu_perf.csv` - GPU 性能基线数据（用于对比加速比）
-
-**操作步骤**：
-
-1. 在 AscendOpGenAgent 目录下配置 Agent：
 ```bash
-mkdir -p .claude
-mkdir -p .claude/skills
-mv agents/triton-ascend-coder.md .claude/CLAUDE.md
-mv skills/triton/* .claude/skills/
+# python >= 3.10, CANN >= 8.3.RC1, torch-npu >= 2.6.0.RC1, Ascend NPU
+
+# 1. 设置 CANN 环境
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+
+# 2. 安装 tilelang-ascend（源码编译）
+git clone --recursive https://github.com/tile-ai/tilelang-ascend.git
+cd tilelang-ascend
+bash install_ascend.sh
+source set_env.sh
+cd ..
+
+# 3. 安装其他依赖
+pip install torch_npu numpy attrs pyyaml decorator scipy psutil protobuf
 ```
 
-2. 进入 AscendOpGenAgent 目录，启动 claude：
-```bash
-claude
+### 使用示例
+
+**lingxi 示例**:
+```
+用户: 生成 ascendC 算子，npu=6，算子描述文件为 /path/to/31_ELU.py，输出到 /path/to/output/31_ELU/
 ```
 
-3. 输入算子生成 Prompt：
-```text
-生成triton算子，
-描述文件路径：benchmarks/TritonNPUKernelBench/${算子}.py，
-arch是 ascend910b2，ASCEND_RT_VISIBLE_DEVICES=1
-输出目录是 /path/to/output
+**lingxi-evo 示例**:
+```
+用户: 进化优化算子
+
+配置:
+- NPU 设备号: 6
+- 算子文件: /path/to/31_ELU.py
+- 进化轮数: 3
+- 并行数: 5
+- 目标加速比: 2.0
 ```
 
-> **说明**：虽然 prompt 中包含 `.py` 文件路径，Agent 会自动检测到 TritonNPUKernelBench 路径并进入 **GPU Kernel 输入模式**，自动查找同名的 `.pt` 文件和 `vllm_gpu_perf.csv` 文件。`.py` 文件用于了解算子逻辑，实际数据从 `.pt` 加载。
+**ops-evo 示例**:
+```
+用户: 优化 ops-nn 仓中的 HardShrink 算子
 
-**执行流程**：
-- **Phase 0**: 自动检测 TritonNPUKernelBench 路径，进入 GPU Kernel 输入模式
-- **Phase 1**: 从 `.pt` 文件构建任务描述（不调用 op-task-extractor skill，由 Agent 自建）
-- **Phase 2-5**: 标准流程生成 NPU Triton 代码
-- **性能对比**: 自动对比 NPU 实现与 GPU 基线性能
-
-**输出特性**（仅在 GPU 迁移模式下）：
-- `report.md` 将额外显示 **"GPU 参考性能"** 部分：
-  - GPU 参考延迟（来自 `vllm_gpu_perf.csv`）
-  - Ascend Triton 延迟
-  - Ascend/GPU 倍数
-- `summary.json` 将包含扩展字段：
-  - `gpu_mode: true`
-  - `perf_data.gpu_reference_ms`
-  - `perf_data.ascend_vs_gpu_ratio`
-  - `per_shape_results[].gpu_reference_ms`
-  - `per_shape_results[].ascend_vs_gpu_ratio`
-
-
-#### 场景三：AutoResearch 多轮迭代优化
-
-适用于已有 ref 和种子 kernel、需要 Claude 长时间迭代优化性能的场景。Claude 写优化 plan → 改 kernel → quick_check + eval → 自动判 KEEP/DISCARD → 进入下一轮，连续失败自动 DIAGNOSE，预算耗尽自动收尾出报告。整套阶段机由 Claude Code hook 强约束。
-
-**操作步骤**：
-
-1. 在 AscendOpGenAgent 目录下配置 AutoResearch 框架：
-```bash
-mkdir -p .claude
-mv setups/autoresearch/CLAUDE.md ./CLAUDE.md
-mv setups/autoresearch/settings.json .claude/settings.json
-mv setups/autoresearch/agents .claude/agents
-mv setups/autoresearch/commands .claude/commands
+配置:
+- 算子路径: /path/to/ops-nn/built-in/HardShrink
+- 进化轮数: 3
+- 并行数: 4
+- 目标加速比: 1.5
 ```
 
-2. 进入 AscendOpGenAgent 目录，启动 claude：
-```bash
-claude
+### 输出结构
+
+**单次生成**:
+```
+output/{op_name}/
+├── model.py                     # 算子描述（PyTorch Model）
+├── <op_name>.json               # 测试用例（精简后）
+├── design/                      # TileLang 设计
+│   ├── block_level/
+│   └── tile_level/
+├── kernel/                      # AscendC 内核代码
+├── model_new_ascendc.py         # AscendC 调用 wrapper
+├── evaluation_results.json      # 评估结果
+└── trace.md                     # 执行 trace
 ```
 
-3. 输入算子优化命令（已有 ref + 种子 kernel，把 `<op>` 换成你的算子名）：
-```text
-/autoresearch --ref workspace/<op>_ref.py --kernel workspace/<op>_kernel.py \
-  --op-name <op> --devices 5 --max-rounds 30
+**进化优化（lingxi-evo）**:
 ```
-
-无人值守长跑可用 `/loop /autoresearch --resume` 自动续跑。完整入门、批量跑、断点续跑、阶段机不变量等见 **[docs/AUTORESEARCH.md](docs/AUTORESEARCH.md)**。
+output/{op_name}_evo_{timestamp}/
+├── world_model.json              # 世界模型决策树
+├── solution_db.jsonl             # 所有变体的血统追踪
+├── shared/                       # 共享文件（所有变体复用）
+│   ├── model.py
+│   ├── <op_name>.json
+│   └── design/
+├── round_1/
+│   ├── parallel_0/               # 变体 0（含 kernel/, evaluation_results.json）
+│   ├── parallel_1/               # 变体 1
+│   └── ...
+├── round_2/
+│   └── ...
+└── profiling/                    # Profiling 数据
+```
 
 ---
-
-#### **3.2 AscendC**
-
-#### 场景一：单算子生成 (Lingxi-code Agent)
-
-适用于开发者需要快速生成、验证某个特定算子的 AscendC 实现。
-
-**操作步骤**：
-
-1. 在 AscendOpGenAgent 目录下配置 Agent 和 skills：
-```bash
-mkdir -p .claude
-mkdir -p .claude/skills
-mv agents/ascend-kernel-developer.md .claude/CLAUDE.md
-mv skills/ascendc/* .claude/skills/
-```
-
-2. 进入 AscendOpGenAgent 目录，启动 claude：
-```bash
-claude
-```
-
-3. 输入算子生成 Prompt：
-```text
-生成一个基于 AscendC 框架的 softmax 算子实现。目标设备架构为 ascend910b2，请将生成的代码文件输出至 /path/to/output/ 目录下。
-```
-
-**执行流程**：Agent 自动执行：确认参数 → 提取任务描述 → 生成代码 → 验证精度与性能 → 输出最终报告。
-
----
-
-#### 场景二：Benchmark 批量评测 (Ascend-Benchmark-Evaluator)
-
-适用于批量评测算子的生成效果，支持单 NPU 串行或多 NPU 并行执行。
-
-**操作步骤**：
-
-1. 在 AscendOpGenAgent 目录下创建 `.claude` 目录并配置 Agent：
-```bash
-mkdir -p .claude
-mkdir -p .claude/skills
-mv agents/ascend-kernel-developer.md .claude/CLAUDE.md
-mv skills/ascendc/* .claude/skills/
-```
-
-2. 进入 AscendOpGenAgent 目录，执行批量调度脚本：
-
-**单 NPU 串行模式**：
-```bash
-cd /path/to/AscendOpGenAgent
-bash utils/run_benchmark_ascendc.sh \
-    --benchmark-dir /path/to/NPUKernelBench \
-    --level 1 \
-    --range 1-30 \
-    --npu 0 \
-    --output /path/to/output
-```
-
-**多 NPU 并行模式**（推荐）：
-```bash
-cd /path/to/AscendOpGenAgent
-bash utils/run_benchmark_ascendc.sh \
-    --benchmark-dir /path/to/NPUKernelBench \
-    --level 1 \
-    --range 1-30 \
-    --npu-list "0,1,2,3,4,5" \
-    --output /path/to/output
-```
-
-**参数说明**：
-- `--benchmark-dir`: Benchmark 根目录路径（必填）
-- `--level`: Level 编号，如 1, 2, 3（必填）
-- `--range`: 算子范围，如 `1-30`（与 `--ids` 二选一）
-- `--ids`: 指定算子编号列表，逗号分隔，如 `3,7,15`（与 `--range` 二选一）
-- `--npu`: 单 NPU 设备 ID，如 0（默认 0，与 `--npu-list` 互斥）
-- `--npu-list`: 多 NPU 列表，逗号分隔，如 `0,1,2,3,4,5`（与 `--npu` 互斥，优先级更高）
-- `--output`: 输出目录（必填）
-
-### 评测基线
-
-#### Triton
-关于 Triton 的相关数据，请参阅[`benchmarks/BASELINE_latest.md`](benchmarks/BASELINE_latest.md)
-
-#### AscendC
-关于 AscendC 的相关数据，请参阅[`benchmarks/BASELINE_latest.md`](benchmarks/BASELINE_latest.md) 
-
-
-
-## 项目结构
-
-```text
-AscendOpGenAgent/
-├── .gitignore
-├── LICENSE
-├── README.en.md
-├── README.md
-├── agents/                     # Agent 定义目录
-│   ├── AKG-triton.md           # 主编排 Agent
-│   ├── benchmark-scheduler.md
-│   ├── kernelgen-workflow.md   # 子 Agent（代码生成工作流）
-│   ├── ascend-kernel-developer.md
-│   └── performance-optimizer.md
-├── benchmarks/                 # 评测数据集存放目录
-│   ├── KernelBench/
-│   │   ├── level1/             # Level 1 测试用例 (100个)
-│   │   ├── level2/             # Level 2 测试用例 (99个)
-│   │   ├── level3/             # Level 3 测试用例 (52个)
-│   │   └── level4/             # Level 4 测试用例 (20个)
-│   ├── NPUKernelBench/
-│   │   └── level1/             # NPU KernelBench Level 1 测试用例 (31个)
-│   └── TritonNPUKernelBench/   # GPU Triton → NPU 迁移评测数据集
-│       ├── {op_name}.pt        # 包含 input_data 和可选 gpu_output
-│       ├── {op_name}.py        # GPU Triton kernel 源码
-│       └── vllm_gpu_perf.csv   # GPU 性能基线数据
-├── skills/                     # Skill 实现目录
-│   ├── ascendc_evalution/
-│   ├── ascend_benchmark_evaluator/
-│   ├── ascendc/
-│   ├── benchmark-evaluator/    # 批量评测 Skill
-│   ├── dsl_baseline_generation/
-│   ├── dsl_lowering/
-│   ├── functional_conversion/
-│   ├── kernel-designer/
-│   ├── kernel-generator/       # 代码生成 Skill
-│   ├── kernel-verifier/        # 验证与性能测试 Skill
-│   ├── latency-optimizer/
-│   ├── op-task-extractor/      # 任务提取 Skill
-│   ├── op_desc_generation/
-│   └── reference_generation/
-├── setups/                     # 场景-specific Claude Code 配置（按需 mv 启用）
-│   └── autoresearch/           # AutoResearch 场景：CLAUDE.md + hooks + 子 agent + slash 命令
-│       ├── CLAUDE.md
-│       ├── settings.json
-│       ├── agents/ar-diagnosis.md
-│       └── commands/autoresearch.md
-└── .autoresearch/              # AutoResearch 框架运行时（脚本 / phase_machine / hooks）
-
-```
-
 
 ## 单用例多 Shape 支持
 
@@ -466,9 +372,9 @@ def get_init_inputs():
 
 | 函数 | 返回类型 | 用途 | 必需 |
 |------|---------|------|------|
-| `get_input_groups()` | `List[List[Tensor/...]]` | 多 Shape 入口，每组对应一个测试配置 | ✅ 多 Shape 场景必需 |
+| `get_input_groups()` | `List[List[Tensor/...]]` | 多 Shape 入口，每组对应一个测试配置 | 多 Shape 场景必需 |
 | `get_inputs()` | `List[Tensor/...]` | 单 Shape 入口，返回第一组或单组输入 | 建议实现（向后兼容） |
-| `get_init_inputs()` | `List[Any]` | `Model.__init__` 的初始化参数 | ✅ 必需 |
+| `get_init_inputs()` | `List[Any]` | `Model.__init__` 的初始化参数 | 必需 |
 
 **输入配置字段说明**：
 
@@ -591,14 +497,14 @@ def get_init_inputs():
 | `op_name` | `str` | 算子名称 |
 | `warmup` | `int` | 预热次数 |
 | `repeats` | `int` | 正式测试次数 |
-| `total_cases` | `int` | 测试的 Shape 数量（单 Shape 为 1，多 Shape ≥2） |
+| `total_cases` | `int` | 测试的 Shape 数量（单 Shape 为 1，多 Shape >=2） |
 | `passed_cases` / `failed_cases` | `int` | 多 Shape 通过 / 失败用例数（异常 `s_i` 的 shape 仍计入 `passed_cases`）|
 | `nan_indices` / `inf_indices` / `zero_indices` / `negative_indices` / `none_indices` | `List[int]` | 各类异常 `s_i` 的 case_idx 列表（从 1 开始，不进入几何平均）；无异常时为 `[]` |
 | `framework.avg_latency_ms` | `float` | PyTorch 实现平均延迟（毫秒），各 Shape 算术平均（兼容语义）|
 | `framework.peak_memory_mb` | `float` | PyTorch 峰值内存（MB）各 Shape 平均 |
 | `implementation.avg_latency_ms` | `float` | 实现平均延迟（毫秒），各 Shape 算术平均（兼容语义）|
 | `implementation.peak_memory_mb` | `float` | 实现峰值内存（MB）各 Shape 平均 |
-| `speedup_vs_torch` | `float\|null` | **几何平均加速比** = `(∏ s_i)^(1/n)`，仅对 status==pass 且 `s_i` 为有限正数的 Shape；全部异常时为 `null` |
+| `speedup_vs_torch` | `float\|null` | **几何平均加速比** = `(prod s_i)^(1/n)`，仅对 status==pass 且 `s_i` 为有限正数的 Shape；全部异常时为 `null` |
 | `perf_method` | `str` | 评测方式："profiler"（torch_npu.profiler）或 "fallback"（time.perf_counter 兜底） |
 | `skill_path` | `str` | 使用的 benchmark skill 路径 |
 | `per_shape_results` | `List[Dict]` | 各 Shape 明细数据（永远存在，含失败用例）|
@@ -616,10 +522,66 @@ def get_init_inputs():
 
 ### 适用场景
 
-1. **算子泛化性测试**：验证生成的 Triton 算子在多种输入规模下的正确性和稳定性
+1. **算子泛化性测试**：验证生成的算子在多种输入规模下的正确性和稳定性
 2. **性能趋势分析**：通过对比不同 Shape 的加速比，识别算子的优势和局限性
 3. **AI 模型场景复现**：模拟真实模型中的典型输入 Shape 分布（如 LLM 的多种序列长度）
 4. **自动 Benchmark 评测**：批量评测时自动覆盖多种 Shape，减少重复工作量
+
+---
+
+## 项目结构
+
+```
+AscendOpGenAgent/
+├── .claude/
+│   ├── agents/                   # Agent 定义
+│   │   ├── lingxi.md             # 单次生成 Agent（TileLang→AscendC）
+│   │   ├── lingxi-evo.md         # TileLang 进化 Agent
+│   │   ├── lingxi-partial.md     # TileLang 进化子 Agent
+│   │   ├── ops-evo.md            # Ops 进化 Agent
+│   │   └── ops-partial.md        # Ops 进化子 Agent
+│   └── skills/                   # Skill 模块
+│       ├── tilelang-designer/    # TileLang 设计（block/tile level）
+│       ├── ascendc-translator/   # AscendC 转译（含 API 知识库）
+│       ├── case-simplifier/      # 测试用例精简
+│       ├── performance-analyzer/ # 性能分析
+│       ├── trace-recorder/       # Trace 记录
+│       ├── ascendc-profiling/    # CSV 级 Profiling 诊断
+│       ├── ascendc-profiling-analysis/ # 指令级深度空泡分析
+│       ├── hardware-specs-query/ # 硬件规格查询
+│       └── ...
+├── evolution/
+│   ├── world_model/              # 世界模型
+│   │   ├── schema.md             # JSON Schema 定义
+│   │   ├── operations.md         # 世界模型操作协议
+│   │   ├── wm_ops.py             # 世界模型操作脚本（refine/select/diagnose）
+│   │   ├── check_round_artifacts.py  # 产物完整性检查
+│   │   └── solution_db.py        # 变体血统追踪
+│   ├── meta_prompts/
+│   │   ├── strategies/           # 28 条优化策略
+│   │   ├── strategy-index.md     # 策略索引
+│   │   ├── lingxi-partial-prompt.md  # 子 Agent prompt 模板
+│   │   └── supervisor-prompt.md  # Supervisor prompt 模板
+│   └── knowledge_base/           # 领域知识库
+│       ├── algorithm_insights/
+│       ├── optimization_patterns/
+│       ├── proven_solutions/
+│       └── hardware/
+├── utils/                        # 辅助脚本
+│   ├── build_ascendc.py          # AscendC 构建
+│   ├── performance.py            # 性能测试
+│   ├── verification_ascendc.py   # AscendC 验证
+│   └── verification_tilelang.py  # TileLang 验证
+└── CLAUDE.md                     # 项目配置
+```
+
+## 依赖
+
+- Python 3.10+
+- CANN >= 8.3.RC1
+- torch-npu >= 2.6.0.RC1
+- [tilelang-ascend](https://github.com/tile-ai/tilelang-ascend)（源码编译）
+- `numpy`, `attrs`, `pyyaml`, `decorator`, `scipy`, `psutil`, `protobuf`
 
 ## 许可证
 
