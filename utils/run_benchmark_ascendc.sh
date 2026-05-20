@@ -13,8 +13,8 @@
 #   bash utils/run_benchmark_ascendc.sh --benchmark-dir /path/to/KernelBench --level 1 --range 1-30 --npu-list "0,1,2,3,4,5" --output /path/to/output
 
 # ── 环境变量 ──
-# export ANTHROPIC_AUTH_TOKEN=sk-  # 替换为您的实际令牌
-# export ANTHROPIC_BASE_URL=https://yunwu.ai
+# export ANTHROPIC_AUTH_TOKEN=sk-xxx  # 替换为您的实际令牌
+# export ANTHROPIC_BASE_URL=<YOUR_API_BASE_URL>  # 如需使用第三方 API 代理，请替换地址
 # export API_TIMEOUT_MS=300000  # 设置为 300 秒超时
 
 set -euo pipefail
