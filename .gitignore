@@ -1,27 +1,39 @@
-# --- legacy AscendOpGenAgent workflows (utils/, skills/triton, skills/ascendc) ---
-node_modules
-package.json
-bun.lock
-benchmark_results/*
-benchmark_eval*
-kernel_meta/*
-triton_ascend_output
-framework_profile*
-output*
-build/
-extra-info/
-*.tar
-
-# --- python ---
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.egg-info/
+*.egg
+dist/
+build/
+build_out/
+extra-info/
+*.whl
 
-# --- AutoResearch (claude-autoresearch framework) runtime state ---
-ar_tasks/
-.ar_state/.heartbeat
-.ar_state/.edit_started
-.autoresearch/.active_task
+# AscendC / CANN 构建产物
+kernel_meta/
+output/
+custom_ops.egg-info/
+
+# 环境与 IDE
+.env
+.venv/
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Claude Code worktrees
+.claude/worktrees/
+.worktrees/
+
+# Claude Code personal settings (per-user permission allowlist, not for commit)
 .claude/settings.local.json
-.claude/scheduled_tasks.lock
-workspace/
+
+# OS
+.DS_Store
+Thumbs.db
+
+_build_tmp.sh
+_build_tmp.py
