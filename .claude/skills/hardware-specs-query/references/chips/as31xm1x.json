@@ -1,7 +1,7 @@
 {
   "chip_series": "AS31XM1X",
   "description": "AS31XM1X 芯片硬件规格参数，数据来源: platform_config/AS31XM1X.ini",
-  "data_source": "/home/z00893531/platform_config/AS31XM1X.ini",
+  "data_source": "platform_config/AS31XM1X.ini",
 
   "shared": {
     "_comment": "AS31XM1X 与 310B 系列同架构 (AIC-M-300, NpuArch=3002), 但 Arch_type 不同",

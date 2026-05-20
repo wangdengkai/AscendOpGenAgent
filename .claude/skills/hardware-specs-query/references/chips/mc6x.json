@@ -1,7 +1,7 @@
 {
   "chip_series": "MC6x",
   "description": "MC6x 系列芯片硬件规格参数，数据来源: platform_config/MC6*.ini",
-  "data_source": "/home/z00893531/platform_config/MC6*.ini",
+  "data_source": "platform_config/MC6*.ini",
 
   "shared": {
     "_comment": "MC6x 分为两个子系列: MC61 (AIC-M-310, 与 610Lite/BS9SX2A 同架构) 和 MC62 (AIC-M-510, 全新架构)",

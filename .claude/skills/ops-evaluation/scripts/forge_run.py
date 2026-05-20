@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -158,8 +159,14 @@ def derive_forge_config_dir(forge_bin: str = "forge") -> str | None:
     except Exception:
         pass
 
-    # Strategy 3: fallback defaults
-    for fallback in ("/mnt/workspace/forge/configs", "/home/c00958677/forge/configs"):
+    # Strategy 3: fallback defaults (env override via FORGE_CONFIG_FALLBACKS=path1:path2)
+    default_fallbacks = ["/mnt/workspace/forge/configs"]
+    extra = os.environ.get("FORGE_CONFIG_FALLBACKS", "")
+    for p in extra.split(":"):
+        p = p.strip()
+        if p:
+            default_fallbacks.append(p)
+    for fallback in default_fallbacks:
         if Path(fallback).is_dir():
             return fallback
 

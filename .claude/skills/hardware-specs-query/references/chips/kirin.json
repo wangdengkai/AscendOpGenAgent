@@ -1,7 +1,7 @@
 {
   "chip_series": "Kirin NPU",
   "description": "Kirin 系列 NPU 芯片硬件规格参数，数据来源: platform_config/Kirin*.ini",
-  "data_source": "/home/z00893531/platform_config/Kirin*.ini",
+  "data_source": "platform_config/Kirin*.ini",
 
   "shared": {
     "_comment": "Kirin 系列均为单核 NPU, 面向移动端, 无 L2, 参数精简",

@@ -172,7 +172,7 @@
 
 ```bash
 [ascendc-verify] 安装自定义算子包...
-[ascendc-verify] 执行命令: bash output/CANN-*.run --install --install-path=/home/j00935189/pkg/0211/
+[ascendc-verify] 执行命令: bash output/CANN-*.run --install --install-path=<USER_HOME>/pkg/0211/
 
 [安装输出]
 [ops_custom] [INFO] upgrade framework
@@ -343,10 +343,10 @@ test_sinkhorn_grad.py::TestCustomSinkhornGrad::test_sinkhorn_grad_random PASSED 
 #### 生成产物
 
 ```
-输出目录: /home/j00935189/omni-ops/training/ascendc/output/
+输出目录: <OMNI_OPS_ROOT>/omni-ops/training/ascendc/output/
 Run包文件: CANN-omni_training_custom_ops--linux.aarch64.run
 文件大小: 4.7 MB
-安装路径: /home/j00935189/pkg/0211/
+安装路径: <USER_HOME>/pkg/0211/
 ```
 
 ---

@@ -1,5 +1,5 @@
-# 定义基础目录
-BASE_DIR="/home/y00889327/AscendOpGenAgent/output_0410_l2_ziji"
+# 定义基础目录 (通过 BASE_DIR 环境变量自定义)
+BASE_DIR="${BASE_DIR:-${HOME}/AscendOpGenAgent/output}"
 
 # 定义日志文件路径
 LOG_FILE="log_preformance.txt"

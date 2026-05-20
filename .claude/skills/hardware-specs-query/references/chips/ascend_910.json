@@ -1,7 +1,7 @@
 {
   "chip_series": "Ascend 910",
   "description": "Ascend 910 初代系列芯片硬件规格参数（910A/PremiumA/ProA/ProB），数据来源: platform_config/Ascend910*.ini",
-  "data_source": "/home/z00893531/platform_config/Ascend910{A,PremiumA,ProA,ProB}.ini",
+  "data_source": "platform_config/Ascend910{A,PremiumA,ProA,ProB}.ini",
 
   "shared": {
     "_comment": "以下参数在 910 初代全系列中相同",

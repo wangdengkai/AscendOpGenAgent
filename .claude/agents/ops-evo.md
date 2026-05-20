@@ -111,7 +111,7 @@ skills:
 ### 步骤1: 收集配置
 
 询问用户以下参数:
-- **REPO_ROOT**: ops仓根目录路径（如 `/home/z00893531/geyu/ops-nn` 或 `/home/z00893531/test/omni-ops/omni-ops/inference/ascendc`）
+- **REPO_ROOT**: ops仓根目录路径（如 `/path/to/ops-nn` 或 `/path/to/omni-ops/omni-ops/inference/ascendc`）
 - **算子路径**: 仓内算子相对路径（如 `norm/ada_layer_norm`）
 - **算子名**: custom_op_name（如 `ada_layer_norm_custom`，带 `_custom` 后缀；omni-ops仓使用原名无后缀）
 - **SOC**: 目标芯片（自动检测或用户指定，如 `ascend910b`）

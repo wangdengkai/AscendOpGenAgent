@@ -1,7 +1,7 @@
 {
   "chip_series": "BS9",
   "description": "BS9 系列芯片硬件规格参数，数据来源: platform_config/BS9*.ini",
-  "data_source": "/home/z00893531/platform_config/BS9*.ini",
+  "data_source": "platform_config/BS9*.ini",
 
   "shared": {
     "_comment": "BS9 分为两个子系列: SX1A (AIC-M-210) 和 SX2A (AIC-M-310)，架构差异较大",

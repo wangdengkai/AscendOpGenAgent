@@ -2133,8 +2133,14 @@ def main():
         # Search all possible .claude/projects directories (not just Path.home())
         # because the script may run as a different user than the session owner
         search_roots = []
-        # Add common home directories and known session storage paths
-        for home_dir in [Path.home(), Path("/home/c00958677"), Path("/home/c00958677/key_kimi_eOJF")]:
+        # Add common home directories and any extra paths from environment
+        home_candidates = [Path.home()]
+        extra_homes_env = os.environ.get("LINGXI_EXTRA_HOME_DIRS", "")
+        for extra in extra_homes_env.split(":"):
+            extra = extra.strip()
+            if extra:
+                home_candidates.append(Path(extra))
+        for home_dir in home_candidates:
             if home_dir.exists():
                 projects_dir = home_dir / ".claude" / "projects"
                 if projects_dir.exists():

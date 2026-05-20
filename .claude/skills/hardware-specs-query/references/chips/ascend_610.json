@@ -1,7 +1,7 @@
 {
   "chip_series": "Ascend 610",
   "description": "Ascend 610 系列芯片硬件规格参数，数据来源: platform_config/Ascend610*.ini",
-  "data_source": "/home/z00893531/platform_config/Ascend610*.ini",
+  "data_source": "platform_config/Ascend610*.ini",
 
   "shared": {
     "_comment": "610 和 610Lite 架构差异较大，仅共享基本的 Cube/Vector 参数",

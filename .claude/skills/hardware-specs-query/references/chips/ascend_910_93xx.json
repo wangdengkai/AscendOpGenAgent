@@ -1,7 +1,7 @@
 {
   "chip_series": "Ascend 910_93xx",
   "description": "Ascend 910_93xx 系列芯片硬件规格参数，与 910B Gen2 同架构（AIC-C-220），数据来源: platform_config/Ascend910_93*.ini",
-  "data_source": "/home/z00893531/platform_config/Ascend910_93*.ini",
+  "data_source": "platform_config/Ascend910_93*.ini",
 
   "shared": {
     "_comment": "910_93xx 与 910B Gen2 共享相同的 AI Core 架构（AIC-C-220, NpuArch=2201）",

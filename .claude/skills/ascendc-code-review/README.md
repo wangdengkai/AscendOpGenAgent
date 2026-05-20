@@ -35,7 +35,7 @@ ascendc-code-review/
 
 ```bash
 # 已完成（当前位置）
-/home/j00935189/omni-ops/skills/ascendc-code-review/
+<OMNI_OPS_ROOT>/omni-ops/skills/ascendc-code-review/
 ```
 
 使用时直接引用：
@@ -49,7 +49,7 @@ ascendc-code-review/
 复制到 Claude Code 的 skills 目录：
 
 ```bash
-cp -r /home/j00935189/omni-ops/skills/ascendc-code-review ~/.claude/skills/
+cp -r <OMNI_OPS_ROOT>/omni-ops/skills/ascendc-code-review ~/.claude/skills/
 ```
 
 使用时：
@@ -485,7 +485,7 @@ code_review:
 ## 📧 联系方式
 
 **维护者**: Claude Code User
-**项目地址**: `/home/j00935189/omni-ops/skills/ascendc-code-review/`
+**项目地址**: `<OMNI_OPS_ROOT>/omni-ops/skills/ascendc-code-review/`
 **文档版本**: v1.0.0
 **最后更新**: 2026-02-11
 

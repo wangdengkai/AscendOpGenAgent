@@ -184,7 +184,7 @@
 3. **ST 验证**（如果存在）：
    ```bash
    cd training/ascendc
-   source /home/j00935189/pkg/0211/vendors/omni_training_custom_ops/bin/set_env.bash
+   source <USER_HOME>/pkg/0211/vendors/omni_training_custom_ops/bin/set_env.bash
    pytest --device npu:* src/ops-transformer/mhc/[op_name]/tests/st/
    ```
    - 统计通过/失败用例数

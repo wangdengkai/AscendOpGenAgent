@@ -34,9 +34,11 @@ def _find_agent_workdir() -> Path:
         if (p / "utils").is_dir():
             return p
 
-    candidates = [
-        Path("/home/z00893531/wzz/agent_workdir/agent_workdir"),
-    ]
+    candidates = []
+    # Optional well-known fallback (set CV_AGENT_WORKDIR_FALLBACK to override)
+    fallback_env = os.environ.get("CV_AGENT_WORKDIR_FALLBACK")
+    if fallback_env:
+        candidates.append(Path(fallback_env))
     for c in candidates:
         if c.is_dir():
             return c

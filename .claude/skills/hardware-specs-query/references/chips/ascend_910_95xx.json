@@ -1,7 +1,7 @@
 {
   "chip_series": "Ascend 910_95xx",
   "description": "Ascend 910_95xx 系列芯片硬件规格参数（AIC-C-310 新架构），数据来源: platform_config/Ascend910_95*.ini",
-  "data_source": "/home/z00893531/platform_config/Ascend910_95*.ini",
+  "data_source": "platform_config/Ascend910_95*.ini",
 
   "shared": {
     "_comment": "910_95xx 全系列共享 AIC-C-310 架构, NpuArch=3510, 拆分核设计",

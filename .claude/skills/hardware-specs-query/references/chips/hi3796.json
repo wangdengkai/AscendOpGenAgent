@@ -1,7 +1,7 @@
 {
   "chip_series": "Hi3796CV300",
   "description": "Hi3796CV300 系列芯片硬件规格参数（机顶盒/智慧屏 NPU），数据来源: platform_config/Hi3796CV300*.ini",
-  "data_source": "/home/z00893531/platform_config/Hi3796CV300*.ini",
+  "data_source": "platform_config/Hi3796CV300*.ini",
 
   "shared": {
     "_comment": "Hi3796 系列为嵌入式单核 NPU, 统一核架构, cube_n=8",
