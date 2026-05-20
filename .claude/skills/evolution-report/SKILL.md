@@ -82,7 +82,7 @@ python3 <skill_path>/scripts/generate_report.py <output_dir> [--baseline-source 
 |--------|----------|--------|
 | 算子名、时间戳 | output 目录名 | 脚本 |
 | 硬件信息 | `world_model_final.json` → `hw_params` | 脚本 |
-| 测试用例参数 | `shared/call_spec.json` → inputs / scalar_args / tensor_kwargs | 脚本 |
+| 测试用例参数 | `shared/call_spec.json`（单 shape / multi-shape 两种格式自动归一化） | 脚本 |
 | Baseline 耗时 | `baseline_evaluation.json` → `baseline.time_us` | 脚本 |
 | 每轮变体结果 | `round_N/parallel_M/evaluation_results.json` | 脚本（含格式归一化） |
 | 代码修改 diff | `modified_files/` vs `shared/original/` | 脚本 |

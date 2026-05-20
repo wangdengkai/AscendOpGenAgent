@@ -52,7 +52,7 @@ output/{op_name}_evo_{timestamp}/world_model.json
   "solution_db_path": null,      // solution_db.jsonl 的相对路径（血统追踪，可选）
   "hw_params": null,
   "discovered_strategies": [],
-  "baseline_evidence": null
+  "baseline_evidence": null,
   // 基线 profiling 的硬映射证据（可选，根级字段）。
   // 由 wm_ops.py attach-baseline-evidence 在跑完 baseline_evaluation 后写入；
   // 结构与节点的 profiling_evidence 完全一致（见节点结构）。
@@ -61,12 +61,22 @@ output/{op_name}_evo_{timestamp}/world_model.json
   //   2) 注入 ops-partial / lingxi-partial prompt 的 [Profiling Context] 作为 Baseline 行
   // null 表示 baseline pipeline 不可用或 attach-baseline-evidence 未被调用，
   // 系统回退到不做对齐惩罚、prompt 中跳过 Baseline 行的行为
-  // open_exploration 节点发现并提炼的新策略 ID 列表（X 前缀，区别于人工编写的 P/A/D 系列）
-  // 示例：["X1", "X2"]；这些策略已写入策略库，可被后续 strategy_guided 节点引用
-  // 目标芯片硬件规格（由 hardware-specs-query skill 在步骤3.5-HW 写入）
-  // 非 null 时结构：{ chip_model, ub_size_bytes, core_num, peak_bw_gbps,
-  //                   peak_vector_tflops_per_core, alignment_bytes, max_tile_fp16_double_buf }
-  // null 表示查询失败或芯片型号不支持，依赖 hw_params 的后续步骤将静默跳过
+
+  "target_speedup": 1.10,
+  // 用户在 Step1 提供的目标加速比（multi-shape 模式下作为硬门控阈值，
+  // 每个 target shape 必须 ≥ 此值才算 fully_passed）。单 shape 场景同样使用。
+
+  "shape_targets": null
+  // [multi-shape only] 顶层 shape 配置概览，单 shape 退化时可为 null。
+  // 非 null 时结构：
+  // {
+  //   "target_count": 2,                      // target_shapes 数量
+  //   "generalization_count": 3,              // generalization_shapes 数量
+  //   "target_speedup_threshold": 1.10,       // 与顶层 target_speedup 同步
+  //   "generalization_floor": 1.0             // 泛化几何平均下限（软门控）
+  // }
+  // 与节点字段 gating / shape_results / aggregate 配套使用。SELECT/REFINE 通过
+  // 此结构判断进化期目标达成（gating==fully_passed）与泛化退化兜底。
 }
 ```
 
@@ -120,6 +130,9 @@ output/{op_name}_evo_{timestamp}/world_model.json
 
   "score": null,
   // 节点的 speedup 值（评测通过后填入，失败节点保持 null）
+  // **multi-shape 模式下含义为 min(target shape speedups)**（保守聚合 —
+  // score 反映最差 target shape 的提速程度）。
+  // 单 shape 模式下即为该 shape 的 speedup。
 
   "difficulty": 2,
   // 实现难度估计（1-5整数），失败节点设为5
@@ -187,6 +200,62 @@ output/{op_name}_evo_{timestamp}/world_model.json
   // null 表示深度分析未触发、trace 数据不存在或分析失败
   // 与 profiling_insight 的关系：profiling_insight 是 CSV 级快速诊断（每轮必做），
   // profiling_evidence 是 trace 级深度分析（仅在特定条件触发时执行），两者互补
+
+  "gating": null,
+  // [multi-shape only] 评测综合判定，五枚举之一（由 evaluate_ops_direct.py 写入
+  // evaluation_results.json 后被 REFINE 转录到节点）：
+  //   "failed"                    — 编译 / 精度 / 运行错（status=failed）
+  //   "target_regression"         — 任一 target shape speedup < 1.0x；
+  //                                 status=passed 但 parent_eligible=false，
+  //                                 REFINE 自动给子节点 strategy_combination 注入
+  //                                 P-ShapeSpec-01
+  //   "generalization_regression" — 仅 fully_passed 候选触发的二次泛化验证后写入；
+  //                                 进化期主流程不直接产出此 gating
+  //   "fully_passed"              — 所有 target shape ≥ target_speedup 且无泛化退化
+  //                                 → 候选最终变体，进入 §4.6.5 泛化验证流程
+  //   "partial_passed"            — 所有 target ≥ 1.0x 但部分未达 target_speedup
+  //                                 → status=passed、parent_eligible=true，
+  //                                 仍可作 parent（partial_passed 宽限退路）
+  // 单 shape 模式（legacy evaluation_results.json）不写 gating 字段
+
+  "parent_eligible": true,
+  // [multi-shape only] 该节点能否被 SELECT 选为下一轮 parent。
+  //   true  : 默认；status=passed 且 gating ∈ {partial_passed, fully_passed} 时为 true
+  //   false : gating == "target_regression" 时强制 false，SELECT 屏蔽其 open 子节点
+  // 旧节点（无 aggregate / gating 字段）SELECT 默认视为 eligible，向后兼容
+
+  "target_shape_regression": false,
+  // [multi-shape only] 是否任一 target shape speedup < 1.0x
+  // = aggregate.any_target_regression
+  // REFINE 据此字段在子节点 strategy_combination 中自动注入 P-ShapeSpec-01
+
+  "shape_results": null,
+  // [multi-shape only] per-shape 详细评测数据，直接从 evaluation_results.json
+  // 复制。结构：
+  // {
+  //   "target": [
+  //     {"name": "T1", "baseline_time_us": 123.4, "evolved_time_us": 100.0,
+  //      "speedup": 1.234, "precision_passed": true, "compilation_success": true,
+  //      "pipeline": {...}, "bottleneck": "compute_bound", "cv_pct": 1.2}, ...
+  //   ],
+  //   "generalization": [...]   // 进化期为空；fully_passed 候选验证后填充
+  // }
+
+  "aggregate": null
+  // [multi-shape only] 聚合统计字段（直接从 evaluation_results.json 复制）：
+  // {
+  //   "target_min_speedup": 1.05,           // = 节点 score
+  //   "target_geo_mean_speedup": 1.18,
+  //   "target_max_speedup": 1.40,
+  //   "all_target_meet_target": false,      // 所有 target ≥ target_speedup
+  //   "all_target_above_baseline": true,    // 所有 target ≥ 1.0x（= parent_eligible）
+  //   "any_target_regression": false,       // = target_shape_regression
+  //   "generalization_geo_mean_speedup": null,
+  //   "any_generalization_regression": null
+  // }
+  // shape_divergence = (target_max_speedup - target_min_speedup) / target_max_speedup
+  // 由 compute_utility 在线计算；divergence ≥ 0.20 且子节点带 P-ShapeSpec-01 时
+  // utility +1.0（鼓励主动分支化）
 }
 ```
 

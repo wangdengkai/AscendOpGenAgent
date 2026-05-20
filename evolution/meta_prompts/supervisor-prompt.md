@@ -22,6 +22,26 @@
 最大轮数: {max_rounds}
 硬件: {hw_params_one_liner}
 
+[MULTI-SHAPE STATE]（仅当 multi-shape 模式启用时填充，否则填 "N/A — 单 shape 模式"）
+Target shapes: {target_shape_names}（共 {target_count} 个）
+Generalization shapes: {generalization_shape_names}（共 {generalization_count} 个）
+Per-shape gating 分布:
+  fully_passed:           {fully_passed_node_ids}
+  partial_passed:         {partial_passed_node_ids}
+  target_regression:      {target_regression_node_ids}
+  generalization_regression: {generalization_regression_node_ids}
+  failed:                 {failed_node_ids}
+
+> **multi-shape 决策点**：若 [TRIGGER REASON] 标注 `generalization_regression`，必须在 [OUTPUT FORMAT] 的 `generalization_decision` 字段返回三选项之一，否则该字段填 null。
+
+[TRIGGER REASON]
+{trigger_reason}
+（例：
+  - "max_rounds_reached" — 进化轮数耗尽
+  - "stagnation_window_exceeded" — 连续 N 轮无显著提升
+  - "generalization_regression_on_node:{node_id}" — multi-shape 模式下 fully_passed 候选泛化退化，需 supervisor 决策
+）
+
 [WORLD MODEL STATE]
 {world_model_summary}
 （由 wm_ops.py summary 生成的精简概览）
@@ -94,6 +114,14 @@
     "architecture_level": "架构级优化建议（若有）" 或 null,
     "external_insight": "来自外部知识的新方向（若有）" 或 null
   },
+  "generalization_decision": "retry_with_shape_spec" 或 "switch_branch" 或 "terminate" 或 null,
+  // multi-shape 模式且 [TRIGGER REASON] 含 generalization_regression 时必填，其他场景填 null
+  // 含义：
+  //   "retry_with_shape_spec" — 下轮强制走 P-ShapeSpec-01，把生效策略隔离到 target variant；
+  //                             主 agent 会在该节点的子节点 strategy_combination 中确保含 P-ShapeSpec-01
+  //   "switch_branch"         — 标 direction_sealed=true 该方向，下轮 NEW_BRANCH
+  //   "terminate"             — should_continue=false，由用户决定是否接受这个"target 达成 + 泛化退化"的变体
+  //   null                    — 非 generalization_regression 触发，本字段不适用
   "new_nodes": [
     {
       "description": "新优化方向描述",

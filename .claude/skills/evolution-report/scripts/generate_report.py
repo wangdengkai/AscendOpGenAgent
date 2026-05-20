@@ -953,44 +953,81 @@ def find_best_path(wm: dict, best_variant: dict | None = None, baseline_time: fl
     return ["root"], 1.0
 
 
-def build_test_case_rows(test_case: dict, output_dir: str = "") -> str:
-    """Build HTML table rows for test case parameters (2 params per row)."""
-    # Build structured test case data from call_spec.json
+def _extract_shape_groups(call_spec: dict) -> list[dict]:
+    """Normalize call_spec into a list of shape groups.
+
+    Supports two formats:
+    - Legacy single-shape: top-level ``inputs`` / ``scalar_args`` / ``tensor_kwargs``.
+    - Multi-shape: ``target_shapes`` / ``generalization_shapes`` arrays, each item
+      carrying its own ``inputs`` / ``scalar_args`` / ``tensor_kwargs``.
+
+    Each returned group has: ``{role, name, inputs, scalar_args, tensor_kwargs}``.
+    """
+    groups: list[dict] = []
+    targets = call_spec.get("target_shapes") or []
+    gens = call_spec.get("generalization_shapes") or []
+    if targets or gens:
+        for i, sh in enumerate(targets):
+            groups.append({
+                "role": "target",
+                "name": sh.get("name") or f"T{i+1}",
+                "inputs": sh.get("inputs", []),
+                "scalar_args": sh.get("scalar_args", {}),
+                "tensor_kwargs": sh.get("tensor_kwargs", {}),
+            })
+        for i, sh in enumerate(gens):
+            groups.append({
+                "role": "generalization",
+                "name": sh.get("name") or f"G{i+1}",
+                "inputs": sh.get("inputs", []),
+                "scalar_args": sh.get("scalar_args", {}),
+                "tensor_kwargs": sh.get("tensor_kwargs", {}),
+            })
+        return groups
+
+    # Legacy single-shape format
+    if call_spec.get("inputs") or call_spec.get("scalar_args") or call_spec.get("tensor_kwargs"):
+        groups.append({
+            "role": "single",
+            "name": "",
+            "inputs": call_spec.get("inputs", []),
+            "scalar_args": call_spec.get("scalar_args", {}),
+            "tensor_kwargs": call_spec.get("tensor_kwargs", {}),
+        })
+    return groups
+
+
+def _render_group_rows(group: dict, with_header: bool) -> list[str]:
+    """Render rows for one shape group: optional colspan=4 header + 2-col params + tensor remark."""
+    rows: list[str] = []
+    if with_header:
+        role_tag = {"target": "Target", "generalization": "泛化", "single": ""}.get(group["role"], "")
+        label_parts = [p for p in (role_tag, group["name"]) if p]
+        label = " · ".join(label_parts) if label_parts else "参数"
+        rows.append(
+            f'<tr><td colspan="4" style="background:var(--bg-subtle);font-weight:600;">'
+            f'Shape: {_escape_html(label)}</td></tr>'
+        )
+
     structured: dict[str, str] = {}
+    for inp in group.get("inputs", []) or []:
+        name = inp.get("name", "")
+        shape = inp.get("shape", [])
+        dtype = inp.get("dtype", "unknown")
+        structured[name] = f"shape={shape}, dtype={dtype}"
+    for k, v in (group.get("scalar_args") or {}).items():
+        structured[k] = str(v)
+
     tensor_kwargs_info: list[str] = []
-
-    # Always prefer call_spec.json if available — it has the canonical, non-duplicate format
-    call_spec = None
-    if output_dir:
-        call_spec = load_json(os.path.join(output_dir, "shared", "call_spec.json"))
-
-    if call_spec:
-        # Extract inputs as params: each input on one row with shape and dtype combined
-        for inp in call_spec.get("inputs", []):
-            name = inp.get("name", "")
-            shape = inp.get("shape", [])
-            dtype = inp.get("dtype", "unknown")
-            structured[name] = f"shape={shape}, dtype={dtype}"
-        # Extract scalar args
-        for k, v in call_spec.get("scalar_args", {}).items():
-            structured[k] = str(v)
-        # Extract tensor kwargs for remark (not main table)
-        for k, v in call_spec.get("tensor_kwargs", {}).items():
-            if isinstance(v, dict):
-                tensor_kwargs_info.append(
-                    f"{k}: shape={v.get('shape', [])}, dtype={v.get('dtype', 'unknown')}"
-                )
-            else:
-                tensor_kwargs_info.append(f"{k}: {v}")
-    elif test_case:
-        # Fallback to provided test_case (may contain duplicates or nested structures)
-        structured = {k: str(v) for k, v in test_case.items()}
-
-    if not structured:
-        return '<tr><td colspan="4">参数信息不可用</td></tr>'
+    for k, v in (group.get("tensor_kwargs") or {}).items():
+        if isinstance(v, dict):
+            tensor_kwargs_info.append(
+                f"{k}: shape={v.get('shape', [])}, dtype={v.get('dtype', 'unknown')}"
+            )
+        else:
+            tensor_kwargs_info.append(f"{k}: {v}")
 
     items = list(structured.items())
-    rows: list[str] = []
     for i in range(0, len(items), 2):
         k1, v1 = items[i]
         if i + 1 < len(items):
@@ -999,15 +1036,51 @@ def build_test_case_rows(test_case: dict, output_dir: str = "") -> str:
         else:
             rows.append(f"<tr><td>{k1}</td><td>{v1}</td><td></td><td></td></tr>")
 
-    # Add tensor kwargs as a remark row if present
     if tensor_kwargs_info:
         remark = "; ".join(tensor_kwargs_info)
         rows.append(
             f'<tr><td colspan="4" style="color:var(--text-muted);font-size:0.8rem;">'
             f'<strong>辅助张量:</strong> {_escape_html(remark)}</td></tr>'
         )
+    return rows
 
-    return "\n".join(rows)
+
+def build_test_case_rows(test_case: dict, output_dir: str = "") -> str:
+    """Build HTML table rows for test case parameters.
+
+    Multi-shape call_spec → emit one section per shape group with a header row.
+    Legacy single-shape call_spec → emit a flat 2-col table (no header).
+    """
+    call_spec = None
+    if output_dir:
+        call_spec = load_json(os.path.join(output_dir, "shared", "call_spec.json"))
+
+    groups: list[dict] = []
+    if call_spec:
+        groups = _extract_shape_groups(call_spec)
+
+    # Fallback: synthesize one group from the test_case dict if call_spec missing/empty
+    if not groups and test_case:
+        # Treat each kv as a scalar arg so they still show up
+        groups = [{
+            "role": "single",
+            "name": "",
+            "inputs": [],
+            "scalar_args": {k: str(v) for k, v in test_case.items()},
+            "tensor_kwargs": {},
+        }]
+
+    if not groups:
+        return '<tr><td colspan="4">参数信息不可用</td></tr>'
+
+    multi = len(groups) > 1 or (groups and groups[0]["role"] != "single")
+    all_rows: list[str] = []
+    for g in groups:
+        all_rows.extend(_render_group_rows(g, with_header=multi))
+
+    if not all_rows:
+        return '<tr><td colspan="4">参数信息不可用</td></tr>'
+    return "\n".join(all_rows)
 
 
 def build_hardware_rows(hw: dict, eval_info: dict) -> str:

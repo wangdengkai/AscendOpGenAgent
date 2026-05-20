@@ -23,6 +23,51 @@ from typing import Any, Optional
 
 
 # ---------------------------------------------------------------------------
+# Multi-shape gating helpers
+# ---------------------------------------------------------------------------
+
+# Strategy that signals shape-specialized variant approach (P-ShapeSpec-01)
+P_SHAPE_SPEC = "P-ShapeSpec-01"
+
+GATING_FAILED = "failed"
+GATING_TARGET_REGRESSION = "target_regression"
+GATING_GENERALIZATION_REGRESSION = "generalization_regression"
+GATING_PARTIAL_PASSED = "partial_passed"
+GATING_FULLY_PASSED = "fully_passed"
+
+
+def _is_multi_shape_eval(eval_result: dict) -> bool:
+    """Tell whether the evaluation result was produced by the multi-shape pipeline.
+
+    Detected by presence of aggregate or shape_results keys. Old single-shape
+    pipeline only produces baseline/evolved/comparison.
+    """
+    return isinstance(eval_result, dict) and (
+        "aggregate" in eval_result or "shape_results" in eval_result
+    )
+
+
+def _node_shape_divergence(node: dict) -> float:
+    """(max - min) / max across the node's target speedups; 0 if not multi-shape."""
+    agg = node.get("aggregate") or {}
+    tmax = agg.get("target_max_speedup")
+    tmin = agg.get("target_min_speedup")
+    if not (isinstance(tmax, (int, float)) and isinstance(tmin, (int, float))):
+        return 0.0
+    if tmax <= 0:
+        return 0.0
+    return max(0.0, (tmax - tmin) / tmax)
+
+
+def _inject_shape_spec_into_strategies(strategies: list) -> list:
+    """Append P-ShapeSpec-01 to a strategy_combination if not already present."""
+    s = list(strategies or [])
+    if P_SHAPE_SPEC not in s:
+        s.append(P_SHAPE_SPEC)
+    return s
+
+
+# ---------------------------------------------------------------------------
 # Optional state.json sync with state_ops.py
 # ---------------------------------------------------------------------------
 # wm_ops subcommands operate on world_model.json. The runtime state cursor
@@ -346,6 +391,10 @@ def compute_utility(node: dict, nodes: dict, wm: Optional[dict] = None) -> float
                 + w_root_explore       (2.0 if parent is root, else 0.0)
                 + w_evidence           (1.5 if parent has profiling_evidence, else 0.0)
                 + w_baseline_mismatch  (A5: 0.0 / -1.0 / -2.0, requires wm)
+                + w_close_to_target    (multi-shape: +0.5 if parent partial_passed
+                                       with score >= target_speedup × 0.85)
+                + w_shape_divergence   (multi-shape: +1.0 if parent shape_divergence >= 0.20
+                                       AND node strategy_combination contains P-ShapeSpec-01)
 
     Rationale for each term:
         parent_score:          Exploit — children of high-performing nodes are more promising
@@ -353,8 +402,9 @@ def compute_utility(node: dict, nodes: dict, wm: Optional[dict] = None) -> float
         depth:                 Mild encouragement for depth-first exploitation
         w_root_explore:        Ensure first-layer breadth is explored before deep-diving
         w_evidence:            Prioritize nodes whose parent has instruction-level profiling
-        w_baseline_mismatch:   Soft-penalize strategies misaligned with baseline bottleneck;
-                               zero when wm.baseline_evidence is null (backwards-compatible)
+        w_baseline_mismatch:   Soft-penalize strategies misaligned with baseline bottleneck
+        w_close_to_target:     Multi-shape — keep pushing parents that are "this close" to target
+        w_shape_divergence:    Multi-shape — encourage P-ShapeSpec-01 children when target shapes diverge
     """
     parent_id = node.get("parent_id") or "root"
     parent = nodes.get(parent_id, {})
@@ -364,12 +414,34 @@ def compute_utility(node: dict, nodes: dict, wm: Optional[dict] = None) -> float
     w_root_explore = 2.0 if parent_id == "root" else 0.0
     w_evidence = 1.5 if parent.get("profiling_evidence") else 0.0
     w_baseline_mismatch = _baseline_mismatch_penalty(node, wm) if wm else 0.0
+
+    # multi-shape weights (parent-derived)
+    w_close = 0.0
+    w_div = 0.0
+    parent_gating = parent.get("gating")
+    target_speedup = None
+    if isinstance(wm, dict):
+        target_speedup = (wm.get("shape_targets") or {}).get("target_speedup_threshold")
+        if target_speedup is None:
+            target_speedup = wm.get("target_speedup")
+    if (parent_gating == GATING_PARTIAL_PASSED
+            and isinstance(target_speedup, (int, float))
+            and isinstance(parent_score, (int, float))
+            and parent_score >= target_speedup * 0.85):
+        w_close = 0.5
+
+    if _node_shape_divergence(parent) >= 0.20:
+        if P_SHAPE_SPEC in (node.get("strategy_combination") or []):
+            w_div = 1.0
+
     return (3.0 * parent_score
             + 2.5 * (5 - difficulty)
             + 0.75 * depth
             + w_root_explore
             + w_evidence
-            + w_baseline_mismatch)
+            + w_baseline_mismatch
+            + w_close
+            + w_div)
 
 
 # ---------------------------------------------------------------------------
@@ -682,9 +754,28 @@ def select_nodes(wm: dict, n: int, force_open_exploration_min: Optional[int] = N
     all node fields needed for prompt construction.
     """
     nodes: dict = wm.get("decision_tree", {}).get("nodes", {})
+
+    def _parent_eligible(nid: str) -> bool:
+        """Check whether selecting this open node would derive from a parent that
+        is marked ineligible (target_shape_regression / generalization_regression).
+
+        Backwards-compatible: nodes without parent_eligible (old single-shape
+        evaluations) are treated as eligible.
+        """
+        nd = nodes.get(nid, {})
+        parent_id = nd.get("parent_id") or "root"
+        parent = nodes.get(parent_id, {})
+        # Only enforce the gate when the parent has been evaluated under the
+        # multi-shape pipeline. Older parents (no aggregate / no gating) pass.
+        if parent.get("aggregate") is None and parent.get("gating") is None:
+            return True
+        # Defaults to True if explicit field absent — minimize blast radius for
+        # legacy nodes that pre-date this field.
+        return bool(parent.get("parent_eligible", True))
+
     open_nodes = [
         (nid, nd) for nid, nd in nodes.items()
-        if nd.get("status") == "open"
+        if nd.get("status") == "open" and _parent_eligible(nid)
     ]
 
     # Split by mode
@@ -1282,6 +1373,17 @@ def refine(
         if quality_rank.get(mq, 0) > quality_rank.get(worst_quality, 0):
             worst_quality = mq
 
+        # ── Multi-shape pipeline: prefer new fields when present ──
+        ms_active = _is_multi_shape_eval(eval_result)
+        ms_aggregate = eval_result.get("aggregate") if ms_active else None
+        ms_shape_results = eval_result.get("shape_results") if ms_active else None
+        ms_gating = eval_result.get("gating") if ms_active else None
+        if ms_active and isinstance(ms_aggregate, dict):
+            # Use min(target speedups) as the node's effective speedup
+            ms_min = ms_aggregate.get("target_min_speedup")
+            if isinstance(ms_min, (int, float)) and ms_min > 0:
+                speedup = ms_min
+
         if compilation_ok and precision_ok and speedup > 0:
             # --- PASSED ---
             node["status"] = "passed"
@@ -1290,6 +1392,36 @@ def refine(
             round_passed += 1
             if speedup > round_best_speedup:
                 round_best_speedup = speedup
+
+            # Multi-shape fields (only when eval came from multi-shape pipeline)
+            if ms_active:
+                node["gating"] = ms_gating
+                node["aggregate"] = ms_aggregate
+                node["shape_results"] = ms_shape_results
+                target_regression = bool(
+                    (ms_aggregate or {}).get("any_target_regression")
+                )
+                node["target_shape_regression"] = target_regression
+                # parent_eligible: only True when no target shape regressed.
+                # generalization_regression at this stage does not automatically
+                # forbid using the node as parent (the supervisor decides
+                # downstream); target_regression always forbids.
+                node["parent_eligible"] = not target_regression
+                if target_regression:
+                    # Override status display reason — node still ran, but
+                    # parent_eligible=false will keep SELECT from picking it.
+                    failed_shapes = [
+                        r.get("name") for r in (ms_shape_results or {}).get("target", [])
+                        if isinstance(r.get("speedup"), (int, float)) and r["speedup"] < 1.0
+                    ]
+                    node["failure_reason"] = (
+                        f"target_shape_regression: shapes {failed_shapes} speedup < 1.0x; "
+                        f"suggest {P_SHAPE_SPEC}"
+                    )
+            else:
+                # Single-shape (legacy) — derive defaults for forwards compat
+                node.setdefault("parent_eligible", True)
+                node.setdefault("target_shape_regression", False)
 
             # Extract profiling_insight from evaluation_results.json
             # ops-evo 写的是 {"evolved": {...}} 嵌套结构；lingxi-evo/lingxi-partial
@@ -1457,6 +1589,26 @@ def refine(
                     old = ch.get("strategy_combination", [])
                     ch["strategy_combination"] = merge_strategies_with_evidence(old, ev)
             # --- end A1 ---
+
+            # --- Multi-shape P-ShapeSpec-01 auto-injection ---
+            # When this node's target shapes regressed, push children toward
+            # shape-specialized variants by injecting P-ShapeSpec-01.
+            if node.get("target_shape_regression"):
+                hint = node.get("failure_reason", "target_shape_regression")
+                for cid in node.get("children", []):
+                    ch = nodes.get(cid)
+                    if not ch or ch.get("status") != "open":
+                        continue
+                    if ch.get("score") is not None:
+                        continue
+                    ch["strategy_combination"] = _inject_shape_spec_into_strategies(
+                        ch.get("strategy_combination", [])
+                    )
+                    base_desc = ch.get("description", "")
+                    note = "考虑用 shape-specialized branch 隔离改动，保护其它 target shape 不退化"
+                    if note not in base_desc:
+                        ch["description"] = (base_desc + " | " if base_desc else "") + note
+            # --- end multi-shape injection ---
 
             summary_lines.append(
                 f"  p{p_idx} [{node_id}]: PASS {speedup:.2f}x "

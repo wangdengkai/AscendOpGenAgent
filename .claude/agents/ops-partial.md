@@ -78,6 +78,30 @@ grep -rl "EZ9999" .claude/skills/ascendc-dev-knowledge/references/troubleshootin
 | op_host/*_tiling.h, *_tiling.cpp | 允许修改 | 不改字段名 |
 | op_host/*_def.cpp | 受限修改 | 仅改编译选项/优化属性，禁改输入输出/类型约束 |
 
+#### Shape-Conscious Modification（multi-shape 场景）
+
+> 在 multi-shape 评估模式下，需要避免让针对某个 target shape 的优化打坏其他 shape 的性能。判断依据：本节点 `[strategy_combination]` 中是否含 `P-ShapeSpec-01`。
+
+**当 strategy_combination 含 `P-ShapeSpec-01` 时（强约束）**：
+
+必须遵循"分支化优化"原则，详见 `evolution/meta_prompts/strategies/perf_shape_spec_01.md`（必读）和 `evolution/knowledge_base/optimization_patterns/shape_specialization.md`。要点：
+
+1. **避免改动 default kernel 实现**：`TILING_KEY_IS(0)` 分支保留原 baseline 实现，作为泛化 shape 的天然保护层
+2. **新增 specialized variant 类**：为每个 target shape 在 kernel 文件中新增一个独立的 `KernelImpl<VariantId>` 类（如 `KernelRMSNormT1` / `KernelRMSNormT2`），承载本轮策略改动
+3. **修改 host tiling 函数**：加 shape 判定块（按 input shape 决定走哪条分支），用 `context->SetTilingKey(uint64_t)` 设置 tiling_key，并填该 variant 专属 tile 参数
+4. **修改 device kernel 入口**：用 `if (TILING_KEY_IS(0)) { Default } else if (TILING_KEY_IS(N)) { TN }` 分发到对应 variant 类。**TILING_KEY_IS 不支持 `else`**，必须显式写 `TILING_KEY_IS(0)` 表达 default 分支
+
+**当 strategy_combination 不含 `P-ShapeSpec-01` 时（default 分支可改的例外）**：
+
+若本轮策略是"全局安全策略"（如纯加法的双缓冲、SIMD 向量化、合理的 tile size 调优等不会牺牲任一 shape 性能的改动），允许修改 default 分支，但必须满足：
+
+- 在 `implementation_note.txt` 中明确声明 `default-safe: <策略说明>`（用于 supervisor / refine 追溯）
+- 主 agent 会在评估阶段为本节点跑 `--shapes-mode all`（即每轮跑 target + generalization），由评估管线兜底校验：若 generalization geomean < 1.0x，该节点会被标 `generalization_regression` 并挂起到 supervisor 决策
+
+**结论性建议**：
+- 拿不准是否"全局安全"时，**优先用 P-ShapeSpec-01**（评估更快，风险更低）
+- 改动 default 分支的提案必须能解释"为什么这个改动在每个 shape 上都不会变慢"
+
 ### 阶段3: 编码红线检查
 
 查阅 `.claude/skills/operator-coding-red-line/SKILL.md`（257行），逐条检查修改后的代码是否违反 AscendC 编码红线。
@@ -122,11 +146,21 @@ python3 {z_search_root}/.claude/skills/ops-evaluation/scripts/evaluate_ops_direc
     --evolved-path {install_path} \
     --device-id {session_device_id} \
     --task-type {task_type} \
+    --shapes-mode {shapes_mode} \
+    --target-speedup {target_speedup} \
     --eval-lock {eval_lock_path} \
     --eval-lock-timeout {eval_lock_timeout} \
     --baseline-cache {baseline_cache_path} \
     --output {output_dir}/round_{r}/parallel_{p}/evaluation_results.json
 ```
+
+**Multi-shape 参数说明**（由主 agent 在 prompt 中填充，详见 ops-evo.md §4.3）:
+- `{shapes_mode}`:
+  - `"target"`：节点 strategy_combination **含** `P-ShapeSpec-01`（改动隔离在 specialized variant，default 未动 → 跳过泛化加速）
+  - `"all"`：节点 strategy_combination **不含** `P-ShapeSpec-01`（可能改了 default → 跑泛化兜底）
+- `{target_speedup}`：用户在 §1 提供的 target_speedup（multi-shape 模式下作为硬门控阈值；evaluate 据此判定 `all_target_meet_target` 和 `gating`）
+
+向后兼容：旧单 shape call_spec.json（顶层 `inputs`）会被 evaluate 入口自动归一化为单 target shape；无需修改本阶段命令。
 
 ### 阶段7: 写入最终结果
 
