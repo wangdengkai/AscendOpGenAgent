@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -110,6 +111,7 @@ def _generate_cmakelists(
     sources: list[Path],
     ascend_path: Path,
     pybind11_inc_cmake: str = "",
+    build_type: str = "Debug",
 ) -> str:
     include_dirs = [kernel_dir]
     catlass_include = kernel_dir / "catlass" / "include"
@@ -131,7 +133,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SOC_VERSION "${{SOC_VERSION}}" CACHE STRING "system on chip type")
 set(ASCEND_CANN_PACKAGE_PATH "${{ASCEND_CANN_PACKAGE_PATH}}" CACHE PATH "ASCEND CANN package installation directory")
 set(RUN_MODE "npu" CACHE STRING "run mode: npu")
-set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type Release/Debug (default Debug)" FORCE)
+set(CMAKE_BUILD_TYPE "{build_type}" CACHE STRING "Build type Release/Debug (default Debug)" FORCE)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "{build_dir}")
 
 if(EXISTS ${{ASCEND_CANN_PACKAGE_PATH}}/tools/tikcpp/ascendc_kernel_cmake)
@@ -164,13 +166,13 @@ target_link_libraries(pybind11_lib PRIVATE
   m
   dl
 )
-execute_process(COMMAND python3 -c "import os; import torch; print(os.path.dirname(torch.__file__))"
+execute_process(COMMAND {sys.executable} -c "import os; import torch; print(os.path.dirname(torch.__file__))"
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE TORCH_PATH
 )
 message("TORCH_PATH is ${{TORCH_PATH}}")
 set(ENV{{ASCEND_HOME_PATH}} ${{ASCEND_CANN_PACKAGE_PATH}})
-execute_process(COMMAND python3 -c "import os; import torch_npu; print(os.path.dirname(torch_npu.__file__))"
+execute_process(COMMAND {sys.executable} -c "import os; import torch_npu; print(os.path.dirname(torch_npu.__file__))"
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE TORCH_NPU_PATH
 )
@@ -187,12 +189,18 @@ target_include_directories(pybind11_lib PRIVATE
 )
 # Pybind11 includes (prefer torch-bundled for ABI compatibility)
 set(PYBIND11_INC_LIST {pybind11_inc_cmake})
+# Detect torch's CXX11 ABI setting to ensure compatibility
+execute_process(COMMAND {sys.executable} -c "import torch; abi=1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0; print(abi)"
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  OUTPUT_VARIABLE TORCH_CXX11_ABI
+)
+message("TORCH_CXX11_ABI is ${{TORCH_CXX11_ABI}}")
 target_compile_options(pybind11_lib PRIVATE
   ${{PYBIND11_INC_LIST}}
-  -D_GLIBCXX_USE_CXX11_ABI=1
+  -D_GLIBCXX_USE_CXX11_ABI=${{TORCH_CXX11_ABI}}
 )
 
-execute_process(COMMAND python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so')"
+execute_process(COMMAND {sys.executable} -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so')"
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE PYTHON_EXTENSION_SUFFIX
 )
@@ -248,6 +256,7 @@ def build(task: str, soc_version: str, build_type: str, clean: bool) -> Path:
             sources=sources,
             ascend_path=ascend_path,
             pybind11_inc_cmake=pybind11_inc_cmake,
+            build_type=build_type,
         ),
         encoding="utf-8",
     )
