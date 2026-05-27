@@ -253,5 +253,4 @@ if (param < MIN || param > MAX) {
 ## 相关资源
 
 - **编码红线完整规范**: `编码红线.md`
-- **AscendC 开发指南**: `.claude/skills/ascendc-dev-knowledge/references/`
 - **整改案例库**: `review/` 目录下的各算子整改报告

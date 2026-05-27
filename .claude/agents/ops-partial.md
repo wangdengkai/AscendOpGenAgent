@@ -46,14 +46,6 @@ skills: []
 - **open_exploration**: 读取匹配算子族的 `algorithm_insights/{family}.md` 寻找灵感
 - **profiling_driven**: 根据瓶颈类型读取对应的 `optimization_patterns/*.md`（如 memory_bound → `double_buffering.md`）
 
-### L2（官方文档 — 按需查阅）
-
-遇到不确定的 API 用法、参数约束或编译错误，查阅 `.claude/skills/ascendc-dev-knowledge/references/`：
-
-```bash
-grep -rl "void DataCopy" .claude/skills/ascendc-dev-knowledge/references/api_reference_docs/
-grep -rl "EZ9999" .claude/skills/ascendc-dev-knowledge/references/troubleshooting_docs/
-```
 
 ## 工作流程
 

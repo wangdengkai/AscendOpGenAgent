@@ -114,11 +114,10 @@ All anti-skip rules read filesystem evidence (`evaluation_results.json`, `profil
 
 ### Knowledge Base
 
-Two-level knowledge architecture for AscendC development:
+AscendC knowledge base:
 
 - **L1 (Curated)**: `evolution/knowledge_base/` — 19 files of curated knowledge for evolution decision-making (hardware heuristics, optimization patterns, API pitfalls, algorithm insights, proven solutions). Progressive disclosure: read `guide.md` first, drill into details on-demand.
-- **L2 (Full Docs)**: `.claude/skills/ascendc-dev-knowledge/references/` — 3742 official AscendC documentation files (~35MB) for precise API lookup during code writing. Includes 5 search guide files and INDEX.md per section.
-- **Search priority**: L1 guide.md → L2 grep → WebSearch
+- **Search priority**: L1 guide.md → WebSearch
 
 ## Dependencies
 
