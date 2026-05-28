@@ -1,1 +1,1 @@
-../../ascendc_evaluation/scripts/perf.py
+../../ascendc-evaluation/scripts/perf.py

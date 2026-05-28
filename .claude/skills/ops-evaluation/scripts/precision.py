@@ -1,1 +1,1 @@
-../../ascendc_evaluation/scripts/precision.py
+../../ascendc-evaluation/scripts/precision.py

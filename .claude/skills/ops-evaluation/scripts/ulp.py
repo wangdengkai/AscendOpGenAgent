@@ -1,1 +1,1 @@
-../../ascendc_evaluation/scripts/ulp.py
+../../ascendc-evaluation/scripts/ulp.py
